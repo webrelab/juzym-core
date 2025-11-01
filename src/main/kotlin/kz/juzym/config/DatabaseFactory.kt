@@ -2,6 +2,7 @@ package kz.juzym.config
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kz.juzym.audit.AuditEventsTable
 import kz.juzym.user.UsersTable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -26,7 +27,7 @@ class DatabaseFactory(private val config: PostgresConfig) {
 
     fun ensureSchema(context: PostgresDatabaseContext) {
         transaction(context.database) {
-            SchemaUtils.create(UsersTable)
+            SchemaUtils.create(UsersTable, AuditEventsTable)
         }
     }
 
