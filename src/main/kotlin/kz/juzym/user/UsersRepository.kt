@@ -1,4 +1,4 @@
-package kz.juzym.postgres
+package kz.juzym.user
 
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
@@ -10,11 +10,11 @@ class UsersRepository(private val database: org.jetbrains.exposed.sql.Database) 
     fun create(user: NewUser): UserRecord = transaction(database) {
         UsersTable.insert { statement ->
             statement[UsersTable.id] = user.id
-            statement[UsersTable.email] = user.email
-            statement[UsersTable.passwordHash] = user.passwordHash
-            statement[UsersTable.displayName] = user.displayName
-            statement[UsersTable.status] = user.status
-            statement[UsersTable.createdAt] = user.createdAt
+            statement[email] = user.email
+            statement[passwordHash] = user.passwordHash
+            statement[displayName] = user.displayName
+            statement[status] = user.status
+            statement[createdAt] = user.createdAt
         }
         user.toRecord()
     }

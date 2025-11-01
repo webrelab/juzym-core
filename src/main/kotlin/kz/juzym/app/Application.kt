@@ -4,9 +4,9 @@ import kz.juzym.config.AppConfigLoader
 import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.Environment
 import kz.juzym.graph.GraphRepository
-import kz.juzym.postgres.DatabaseFactory
-import kz.juzym.postgres.PostgresDatabaseContext
-import kz.juzym.postgres.UsersRepository
+import kz.juzym.config.DatabaseFactory
+import kz.juzym.config.PostgresDatabaseContext
+import kz.juzym.user.UsersRepository
 import org.neo4j.driver.AuthTokens
 import org.neo4j.driver.Driver
 import org.neo4j.driver.GraphDatabase

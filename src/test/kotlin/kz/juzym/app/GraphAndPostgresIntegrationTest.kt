@@ -9,9 +9,10 @@ import kz.juzym.graph.StaticNodeDto
 import kz.juzym.graph.StaticNodeType
 import kz.juzym.graph.UserNode
 import kz.juzym.graph.UserNodeDto
-import kz.juzym.postgres.DatabaseFactory
-import kz.juzym.postgres.NewUser
-import kz.juzym.postgres.UsersRepository
+import kz.juzym.config.DatabaseFactory
+import kz.juzym.config.PostgresDatabaseContext
+import kz.juzym.user.NewUser
+import kz.juzym.user.UsersRepository
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
@@ -37,7 +38,7 @@ class GraphAndPostgresIntegrationTest {
     private lateinit var graphRepository: GraphRepository
 
     private lateinit var postgres: EmbeddedPostgres
-    private lateinit var postgresContext: kz.juzym.postgres.PostgresDatabaseContext
+    private lateinit var postgresContext: PostgresDatabaseContext
     private lateinit var usersRepository: UsersRepository
 
     @BeforeAll

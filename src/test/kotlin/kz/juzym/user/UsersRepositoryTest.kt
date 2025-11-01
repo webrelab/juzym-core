@@ -1,7 +1,9 @@
-package kz.juzym.postgres
+package kz.juzym.user
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
+import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.PostgresConfig
+import kz.juzym.config.PostgresDatabaseContext
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test

@@ -1,8 +1,8 @@
-package kz.juzym.postgres
+package kz.juzym.config
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import kz.juzym.config.PostgresConfig
+import kz.juzym.user.UsersTable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
