@@ -67,6 +67,26 @@ class GraphRepository(private val driver: Driver) {
         }
     }
 
+    fun getRelationship(fromId: UUID, toId: UUID, type: RelationshipType): GraphRelationship? =
+        driver.session(SessionConfig.defaultConfig()).use { session ->
+            session.executeRead { tx ->
+                val record = tx.run(
+                    """
+                    MATCH (from {id: ${"$"}fromId})-[r:RELATION {type: ${"$"}type}]->(to {id: ${"$"}toId})
+                    RETURN r
+                    LIMIT 1
+                    """.trimIndent(),
+                    Values.parameters(
+                        "fromId", fromId.toString(),
+                        "toId", toId.toString(),
+                        "type", type.value
+                    )
+                ).list().singleOrNull() ?: return@executeRead null
+                val relationship = record["r"].asRelationship()
+                relationship.toGraphRelationship(fromId = fromId, toId = toId)
+            }
+        }
+
     fun getOutgoingRelationships(id: UUID): List<GraphRelationship> = driver.session(SessionConfig.defaultConfig()).use { session ->
         session.executeRead { tx ->
             tx.run(
@@ -120,6 +140,71 @@ class GraphRepository(private val driver: Driver) {
         driver.session(SessionConfig.defaultConfig()).use { session ->
             session.executeWrite { tx ->
                 tx.run("MATCH (n) DETACH DELETE n").consume()
+            }
+        }
+    }
+
+    fun deleteNode(id: UUID): Boolean {
+        return driver.session(SessionConfig.defaultConfig()).use { session ->
+            session.executeWrite { tx ->
+                val summary = tx.run(
+                    """
+                    MATCH (n {id: ${"$"}id})
+                    DETACH DELETE n
+                    """.trimIndent(),
+                    Values.parameters("id", id.toString())
+                ).consume()
+                summary.counters().nodesDeleted() > 0
+            }
+        }
+    }
+
+    fun deleteRelationship(fromId: UUID, toId: UUID, type: RelationshipType): Boolean {
+        return driver.session(SessionConfig.defaultConfig()).use { session ->
+            session.executeWrite { tx ->
+                val summary = tx.run(
+                    """
+                    MATCH (from {id: ${"$"}fromId})-[r:RELATION {type: ${"$"}type}]->(to {id: ${"$"}toId})
+                    WITH r LIMIT 1
+                    DELETE r
+                    """.trimIndent(),
+                    Values.parameters(
+                        "fromId", fromId.toString(),
+                        "toId", toId.toString(),
+                        "type", type.value
+                    )
+                ).consume()
+                summary.counters().relationshipsDeleted() > 0
+            }
+        }
+    }
+
+    fun updateRelationshipEndpoints(
+        fromId: UUID,
+        toId: UUID,
+        type: RelationshipType,
+        newFromId: UUID,
+        newToId: UUID
+    ): Boolean {
+        return driver.session(SessionConfig.defaultConfig()).use { session ->
+            session.executeWrite { tx ->
+                val summary = tx.run(
+                    """
+                    MATCH (oldFrom {id: ${"$"}fromId})-[r:RELATION {type: ${"$"}type}]->(oldTo {id: ${"$"}toId})
+                    MATCH (newFrom {id: ${"$"}newFromId}), (newTo {id: ${"$"}newToId})
+                    CREATE (newFrom)-[newRel:RELATION]->(newTo)
+                    SET newRel = r
+                    DELETE r
+                    """.trimIndent(),
+                    Values.parameters(
+                        "fromId", fromId.toString(),
+                        "toId", toId.toString(),
+                        "type", type.value,
+                        "newFromId", newFromId.toString(),
+                        "newToId", newToId.toString()
+                    )
+                ).consume()
+                summary.counters().relationshipsCreated() > 0 && summary.counters().relationshipsDeleted() > 0
             }
         }
     }

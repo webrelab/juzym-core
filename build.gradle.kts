@@ -26,6 +26,7 @@ dependencies {
     testImplementation("org.neo4j.test:neo4j-harness:5.20.0")
     testImplementation("org.slf4j:slf4j-simple:2.0.13")
     testImplementation("io.zonky.test:embedded-postgres:2.0.4")
+    testImplementation("io.mockk:mockk:1.13.11")
 }
 
 tasks.test {
