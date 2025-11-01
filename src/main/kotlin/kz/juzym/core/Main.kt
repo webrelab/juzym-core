@@ -1,5 +1,9 @@
 package kz.juzym.core
 
+import kz.juzym.app.Application
+
 fun main() {
-    println("Hello World!")
+    val application = Application()
+    val context = application.start()
+    Runtime.getRuntime().addShutdownHook(Thread { context.close() })
 }
