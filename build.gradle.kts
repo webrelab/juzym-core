@@ -26,7 +26,9 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
-    testImplementation("org.neo4j.test:neo4j-harness:5.20.0")
+    testImplementation("org.neo4j.test:neo4j-harness:5.20.0") {
+        exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
+    }
     testImplementation("org.slf4j:slf4j-simple:2.0.13")
     testImplementation("io.zonky.test:embedded-postgres:2.0.4")
     testImplementation("io.mockk:mockk:1.13.11")
