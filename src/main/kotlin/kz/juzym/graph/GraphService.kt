@@ -1,9 +1,10 @@
 package kz.juzym.graph
 
+import kz.juzym.audit.AuditAction
 import java.util.ArrayDeque
 import java.util.UUID
 
-class GraphService(private val repository: GraphRepository) {
+interface GraphService {
 
     data class BlockingRelationshipInfo(
         val relationship: GraphRelationship,
@@ -29,12 +30,42 @@ class GraphService(private val repository: GraphRepository) {
         data object NotFound : UpdateRelationshipResult
     }
 
-    fun createNode(dto: GraphNodeDto) {
+    @AuditAction("graph.createNode")
+    fun createNode(dto: GraphNodeDto)
+
+    @AuditAction("graph.deleteNode")
+    fun deleteNode(id: UUID): DeleteNodeResult
+
+    @AuditAction("graph.createRelationship")
+    fun createRelationship(dto: GraphRelationshipDto)
+
+    @AuditAction("graph.deleteRelationship")
+    fun deleteRelationship(fromId: UUID, toId: UUID, type: RelationshipType): DeleteRelationshipResult
+
+    @AuditAction("graph.updateRelationshipEndpoints")
+    fun updateRelationshipEndpoints(
+        fromId: UUID,
+        toId: UUID,
+        type: RelationshipType,
+        newFromId: UUID,
+        newToId: UUID
+    ): UpdateRelationshipResult
+
+    @AuditAction("graph.getUserNodesFromStatic")
+    fun getUserNodesFromStatic(staticId: UUID): Set<UserNode>
+
+    @AuditAction("graph.getActivityNodesFromUser")
+    fun getActivityNodesFromUser(userId: UUID): Set<ActivityNode>
+}
+
+class GraphServiceImpl(private val repository: GraphRepository) : GraphService {
+
+    override fun createNode(dto: GraphNodeDto) {
         repository.createNode(dto)
     }
 
-    fun deleteNode(id: UUID): DeleteNodeResult {
-        val node = repository.getNode(id) ?: return DeleteNodeResult.NotFound
+    override fun deleteNode(id: UUID): GraphService.DeleteNodeResult {
+        val node = repository.getNode(id) ?: return GraphService.DeleteNodeResult.NotFound
         val relationships = getAllRelationships(id)
         val counterpartIds = relationships
             .mapNotNull { relationship -> relationship.otherNodeId(id)?.takeIf { it != id } }
@@ -46,27 +77,31 @@ class GraphService(private val repository: GraphRepository) {
             if (remaining.isEmpty()) {
                 relationships
                     .filter { it.connectsNodes(id, counterpartId) }
-                    .map { BlockingRelationshipInfo(it, counterpartId) }
+                    .map { GraphService.BlockingRelationshipInfo(it, counterpartId) }
             } else {
                 emptyList()
             }
         }.distinct()
 
         if (blockingRelationships.isNotEmpty()) {
-            return DeleteNodeResult.Forbidden(blockingRelationships)
+            return GraphService.DeleteNodeResult.Forbidden(blockingRelationships)
         }
 
         repository.deleteNode(id)
-        return DeleteNodeResult.Success(node)
+        return GraphService.DeleteNodeResult.Success(node)
     }
 
-    fun createRelationship(dto: GraphRelationshipDto) {
+    override fun createRelationship(dto: GraphRelationshipDto) {
         repository.createRelationship(dto)
     }
 
-    fun deleteRelationship(fromId: UUID, toId: UUID, type: RelationshipType): DeleteRelationshipResult {
+    override fun deleteRelationship(
+        fromId: UUID,
+        toId: UUID,
+        type: RelationshipType
+    ): GraphService.DeleteRelationshipResult {
         val relationship = repository.getRelationship(fromId, toId, type)
-            ?: return DeleteRelationshipResult.NotFound
+            ?: return GraphService.DeleteRelationshipResult.NotFound
 
         val blockedNodes = mutableSetOf<UUID>()
         val fromRelationships = getAllRelationships(relationship.fromId)
@@ -79,32 +114,32 @@ class GraphService(private val repository: GraphRepository) {
         }
 
         if (blockedNodes.isNotEmpty()) {
-            return DeleteRelationshipResult.ForbiddenLastRelationship(blockedNodes)
+            return GraphService.DeleteRelationshipResult.ForbiddenLastRelationship(blockedNodes)
         }
 
         repository.deleteRelationship(fromId, toId, type)
-        return DeleteRelationshipResult.Success
+        return GraphService.DeleteRelationshipResult.Success
     }
 
-    fun updateRelationshipEndpoints(
+    override fun updateRelationshipEndpoints(
         fromId: UUID,
         toId: UUID,
         type: RelationshipType,
         newFromId: UUID,
         newToId: UUID
-    ): UpdateRelationshipResult {
+    ): GraphService.UpdateRelationshipResult {
         val relationship = repository.getRelationship(fromId, toId, type)
-            ?: return UpdateRelationshipResult.NotFound
+            ?: return GraphService.UpdateRelationshipResult.NotFound
 
         if (fromId == newFromId && toId == newToId) {
-            return UpdateRelationshipResult.Success(relationship)
+            return GraphService.UpdateRelationshipResult.Success(relationship)
         }
 
         if (repository.getNode(newFromId) == null) {
-            return UpdateRelationshipResult.NodeNotFound(newFromId)
+            return GraphService.UpdateRelationshipResult.NodeNotFound(newFromId)
         }
         if (repository.getNode(newToId) == null) {
-            return UpdateRelationshipResult.NodeNotFound(newToId)
+            return GraphService.UpdateRelationshipResult.NodeNotFound(newToId)
         }
 
         val blockedNodes = mutableSetOf<UUID>()
@@ -122,20 +157,20 @@ class GraphService(private val repository: GraphRepository) {
         }
 
         if (blockedNodes.isNotEmpty()) {
-            return UpdateRelationshipResult.ForbiddenLastRelationship(blockedNodes)
+            return GraphService.UpdateRelationshipResult.ForbiddenLastRelationship(blockedNodes)
         }
 
         val updated = repository.updateRelationshipEndpoints(fromId, toId, type, newFromId, newToId)
         if (!updated) {
-            return UpdateRelationshipResult.NotFound
+            return GraphService.UpdateRelationshipResult.NotFound
         }
 
         val updatedRelationship = repository.getRelationship(newFromId, newToId, type)
-            ?: return UpdateRelationshipResult.NotFound
-        return UpdateRelationshipResult.Success(updatedRelationship)
+            ?: return GraphService.UpdateRelationshipResult.NotFound
+        return GraphService.UpdateRelationshipResult.Success(updatedRelationship)
     }
 
-    fun getUserNodesFromStatic(staticId: UUID): Set<UserNode> {
+    override fun getUserNodesFromStatic(staticId: UUID): Set<UserNode> {
         val startNode = repository.getNode(staticId)
         if (startNode !is StaticNode) {
             return emptySet()
@@ -167,7 +202,7 @@ class GraphService(private val repository: GraphRepository) {
         return result
     }
 
-    fun getActivityNodesFromUser(userId: UUID): Set<ActivityNode> {
+    override fun getActivityNodesFromUser(userId: UUID): Set<ActivityNode> {
         val startNode = repository.getNode(userId)
         if (startNode !is UserNode) {
             return emptySet()

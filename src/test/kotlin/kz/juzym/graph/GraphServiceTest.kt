@@ -22,7 +22,7 @@ class GraphServiceTest {
     @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this, relaxUnitFun = true)
-        service = GraphService(repository)
+        service = GraphServiceImpl(repository)
     }
 
     @Test

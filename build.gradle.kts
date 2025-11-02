@@ -17,6 +17,7 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-java-time:0.50.1")
     implementation("org.postgresql:postgresql:42.7.3")
     implementation("com.zaxxer:HikariCP:5.1.0")
+    implementation("io.insert-koin:koin-core:3.5.6")
 
     implementation("com.typesafe:config:1.4.3")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
