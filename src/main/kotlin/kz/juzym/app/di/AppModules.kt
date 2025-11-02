@@ -12,6 +12,7 @@ import kz.juzym.config.JwtProperties
 import kz.juzym.config.Neo4jConfig
 import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
+import kz.juzym.config.RedisConfig
 import kz.juzym.config.UserLinksConfig
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
@@ -34,14 +35,20 @@ import org.koin.dsl.module
 import org.neo4j.driver.AuthTokens
 import org.neo4j.driver.Driver
 import org.neo4j.driver.GraphDatabase
+import io.lettuce.core.RedisClient
+import io.lettuce.core.RedisURI
+import io.lettuce.core.api.StatefulRedisConnection
+import io.lettuce.core.codec.StringCodec
 
 fun configurationModule(config: ApplicationConfig): Module = module {
     single { config }
     single { config.neo4j }
     single { config.postgres }
+    single { config.redis }
     single { config.audit }
     single { config.jwt }
     single { config.userLinks }
+    single { config.server }
 }
 
 val infrastructureModule = module {
@@ -53,6 +60,14 @@ val infrastructureModule = module {
             neo4jConfig.uri,
             AuthTokens.basic(neo4jConfig.user, neo4jConfig.password)
         )
+    }
+    single<RedisClient> {
+        val redisConfig = get<RedisConfig>()
+        val uri = RedisURI.Builder.redis(redisConfig.host, redisConfig.port).build()
+        RedisClient.create(uri)
+    }
+    single<StatefulRedisConnection<String, String>>(createdAtStart = true) {
+        get<RedisClient>().connect(StringCodec.UTF8)
     }
 }
 

@@ -7,9 +7,11 @@ data class ApplicationConfig(
     val environment: Environment,
     val neo4j: Neo4jConfig,
     val postgres: PostgresConfig,
+    val redis: RedisConfig,
     val audit: AuditConfig,
     val jwt: JwtProperties,
-    val userLinks: UserLinksConfig
+    val userLinks: UserLinksConfig,
+    val server: ServerConfig
 )
 
 data class Neo4jConfig(
@@ -22,6 +24,11 @@ data class PostgresConfig(
     val jdbcUrl: String,
     val user: String,
     val password: String
+)
+
+data class RedisConfig(
+    val host: String,
+    val port: Int
 )
 
 data class AuditConfig(
@@ -39,6 +46,11 @@ data class UserLinksConfig(
     val passwordResetBaseUrl: String,
     val deletionBaseUrl: String,
     val emailChangeBaseUrl: String
+)
+
+data class ServerConfig(
+    val host: String,
+    val port: Int
 )
 
 enum class AuditStoreType {
@@ -103,6 +115,10 @@ object AppConfigLoader {
                 user = read("postgres_user"),
                 password = read("postgres_password")
             ),
+            redis = RedisConfig(
+                host = readOptional("redis_host") ?: "localhost",
+                port = readOptional("redis_port")?.toInt() ?: 6379
+            ),
             audit = AuditConfig(
                 store = AuditStoreType.fromValue(readOptional("audit_store"))
             ),
@@ -116,6 +132,10 @@ object AppConfigLoader {
                 passwordResetBaseUrl = read("user_password_reset_base_url"),
                 deletionBaseUrl = read("user_deletion_base_url"),
                 emailChangeBaseUrl = read("user_email_change_base_url")
+            ),
+            server = ServerConfig(
+                host = readOptional("server_host") ?: "0.0.0.0",
+                port = readOptional("server_port")?.toInt() ?: 8080
             )
         )
     }

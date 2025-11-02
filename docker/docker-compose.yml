@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  neo4j:
+    image: neo4j:5.20
+    container_name: juzym-neo4j
+    environment:
+      NEO4J_AUTH: "neo4j/juzymneo4j"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/logs:/logs
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: juzym-postgres
+    environment:
+      POSTGRES_USER: juzym
+      POSTGRES_PASSWORD: juzym
+      POSTGRES_DB: juzym
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: juzym-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    restart: unless-stopped

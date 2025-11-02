@@ -9,6 +9,8 @@ repositories {
     mavenCentral()
 }
 
+val ktorVersion = "2.3.12"
+
 dependencies {
     implementation("org.neo4j.driver:neo4j-java-driver:5.21.0")
     implementation("org.jetbrains.exposed:exposed-core:0.50.1")
@@ -20,6 +22,14 @@ dependencies {
     implementation("io.insert-koin:koin-core:3.5.6")
     implementation("com.auth0:java-jwt:4.4.0")
     implementation("org.mindrot:jbcrypt:0.4")
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
+
+    implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
+    implementation("io.ktor:ktor-server-netty-jvm:$ktorVersion")
+    implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
+    implementation("io.ktor:ktor-serialization-jackson:$ktorVersion")
+    implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
+    implementation("ch.qos.logback:logback-classic:1.5.6")
 
     implementation("com.typesafe:config:1.4.3")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
