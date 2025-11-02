@@ -11,8 +11,12 @@ import kz.juzym.graph.UserNode
 import kz.juzym.graph.UserNodeDto
 import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.PostgresDatabaseContext
-import kz.juzym.user.NewUser
-import kz.juzym.user.UsersRepository
+import kz.juzym.user.ExposedUserRepository
+import kz.juzym.user.User
+import kz.juzym.user.UserRepository
+import kz.juzym.user.UserStatus
+import kz.juzym.user.security.BcryptPasswordHasher
+import kz.juzym.user.security.PasswordHasher
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
@@ -24,8 +28,6 @@ import org.neo4j.driver.GraphDatabase
 import org.neo4j.harness.Neo4j
 import org.neo4j.harness.Neo4jBuilders
 import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -39,7 +41,8 @@ class GraphAndPostgresIntegrationTest {
 
     private lateinit var postgres: EmbeddedPostgres
     private lateinit var postgresContext: PostgresDatabaseContext
-    private lateinit var usersRepository: UsersRepository
+    private lateinit var usersRepository: UserRepository
+    private lateinit var passwordHasher: PasswordHasher
 
     @BeforeAll
     fun setup() {
@@ -57,7 +60,8 @@ class GraphAndPostgresIntegrationTest {
         postgresContext = factory.connect()
         factory.verifyConnection(postgresContext)
         factory.ensureSchema(postgresContext)
-        usersRepository = UsersRepository(postgresContext.database)
+        passwordHasher = BcryptPasswordHasher(logRounds = 4)
+        usersRepository = ExposedUserRepository(postgresContext.database, passwordHasher)
     }
 
     @AfterEach
@@ -75,13 +79,13 @@ class GraphAndPostgresIntegrationTest {
 
     @Test
     fun `should create graph user linked to sql user`() {
-        val newUser = NewUser(
+        val newUser = User(
             id = UUID.randomUUID(),
+            iin = "123456789012",
             email = "graph-user@example.com",
-            passwordHash = "hash",
-            displayName = "Graph User",
-            status = "active",
-            createdAt = OffsetDateTime.now(ZoneOffset.UTC)
+            passwordHash = passwordHasher.hash("password"),
+            status = UserStatus.ACTIVE,
+            createdAt = Instant.now()
         )
         usersRepository.create(newUser)
 
@@ -89,7 +93,7 @@ class GraphAndPostgresIntegrationTest {
         val userNodeDto = UserNodeDto(
             id = userNodeId,
             name = "graph-user",
-            displayName = newUser.displayName,
+            displayName = "Graph User",
             userId = newUser.id,
             metadata = mapOf("role" to "owner")
         )
@@ -113,13 +117,13 @@ class GraphAndPostgresIntegrationTest {
             )
         )
         val userId = UUID.randomUUID()
-        val sqlUser = NewUser(
+        val sqlUser = User(
             id = userId,
+            iin = "109876543210",
             email = "rep@example.com",
-            passwordHash = "hash",
-            displayName = "Representative",
-            status = "active",
-            createdAt = OffsetDateTime.now(ZoneOffset.UTC)
+            passwordHash = passwordHasher.hash("password"),
+            status = UserStatus.ACTIVE,
+            createdAt = Instant.now()
         )
         usersRepository.create(sqlUser)
         val graphUserId = UUID.randomUUID()
@@ -127,7 +131,7 @@ class GraphAndPostgresIntegrationTest {
             UserNodeDto(
                 id = graphUserId,
                 name = "rep",
-                displayName = sqlUser.displayName,
+                displayName = "Representative",
                 userId = sqlUser.id
             )
         )

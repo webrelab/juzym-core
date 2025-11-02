@@ -13,7 +13,9 @@ import kz.juzym.config.Environment
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
-import kz.juzym.user.UsersRepository
+import kz.juzym.user.UserRepository
+import kz.juzym.user.UserService
+import kz.juzym.user.security.jwt.JwtService
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.neo4j.driver.Driver
@@ -47,7 +49,9 @@ class Application(
             neo4jDriver = driver,
             postgres = postgresContext,
             graphRepository = koin.get(),
-            usersRepository = koin.get(),
+            userRepository = koin.get(),
+            userService = koin.get(),
+            jwtService = koin.get(),
             graphService = koin.get(),
             auditEventStore = koin.get(),
             koinApplication = koinApplication
@@ -67,7 +71,9 @@ data class ApplicationContext(
     val neo4jDriver: Driver,
     val postgres: PostgresDatabaseContext,
     val graphRepository: GraphRepository,
-    val usersRepository: UsersRepository,
+    val userRepository: UserRepository,
+    val userService: UserService,
+    val jwtService: JwtService,
     val graphService: GraphService,
     val auditEventStore: AuditEventStore,
     private val koinApplication: KoinApplication

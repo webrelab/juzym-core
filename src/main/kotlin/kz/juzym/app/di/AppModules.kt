@@ -8,13 +8,27 @@ import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.AuditConfig
 import kz.juzym.config.AuditStoreType
 import kz.juzym.config.DatabaseFactory
+import kz.juzym.config.JwtProperties
 import kz.juzym.config.Neo4jConfig
 import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
+import kz.juzym.config.UserLinksConfig
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
-import kz.juzym.user.UsersRepository
+import kz.juzym.user.ConsoleMailSenderStub
+import kz.juzym.user.ExposedUserRepository
+import kz.juzym.user.ExposedUserTokenRepository
+import kz.juzym.user.MailSenderStub
+import kz.juzym.user.UserRepository
+import kz.juzym.user.UserService
+import kz.juzym.user.UserServiceConfig
+import kz.juzym.user.UserTokenRepository
+import kz.juzym.user.UserServiceImpl
+import kz.juzym.user.security.BcryptPasswordHasher
+import kz.juzym.user.security.PasswordHasher
+import kz.juzym.user.security.jwt.JwtConfig
+import kz.juzym.user.security.jwt.JwtService
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.neo4j.driver.AuthTokens
@@ -26,6 +40,8 @@ fun configurationModule(config: ApplicationConfig): Module = module {
     single { config.neo4j }
     single { config.postgres }
     single { config.audit }
+    single { config.jwt }
+    single { config.userLinks }
 }
 
 val infrastructureModule = module {
@@ -42,7 +58,8 @@ val infrastructureModule = module {
 
 val repositoryModule = module {
     single { GraphRepository(get()) }
-    single { UsersRepository(get<PostgresDatabaseContext>().database) }
+    single<UserRepository> { ExposedUserRepository(get<PostgresDatabaseContext>().database, get()) }
+    single<UserTokenRepository> { ExposedUserTokenRepository(get<PostgresDatabaseContext>().database) }
 }
 
 val auditModule = module {
@@ -56,6 +73,41 @@ val auditModule = module {
 }
 
 val serviceModule = module {
+    single<PasswordHasher> { BcryptPasswordHasher() }
+    single<MailSenderStub> { ConsoleMailSenderStub() }
+    single {
+        val jwtProps = get<JwtProperties>()
+        JwtService(
+            JwtConfig(
+                secret = jwtProps.secret,
+                issuer = jwtProps.issuer,
+                ttl = java.time.Duration.ofSeconds(jwtProps.ttlSeconds)
+            )
+        )
+    }
+    single {
+        val links = get<UserLinksConfig>()
+        UserServiceConfig(
+            activationLinkBuilder = { token -> "${links.activationBaseUrl}/$token" },
+            passwordResetLinkBuilder = { token -> "${links.passwordResetBaseUrl}/$token" },
+            deletionLinkBuilder = { token -> "${links.deletionBaseUrl}/$token" },
+            emailChangeLinkBuilder = { token -> "${links.emailChangeBaseUrl}/$token" }
+        )
+    }
+    single {
+        UserServiceImpl(
+            userRepository = get(),
+            tokenRepository = get(),
+            mailSender = get(),
+            passwordHasher = get(),
+            jwtService = get(),
+            config = get()
+        )
+    }
+    single<UserService> {
+        val implementation: UserService = get<UserServiceImpl>()
+        auditProxy(implementation, get())
+    }
     single { GraphServiceImpl(get()) }
     single<GraphService> {
         val real: GraphService = get<GraphServiceImpl>()

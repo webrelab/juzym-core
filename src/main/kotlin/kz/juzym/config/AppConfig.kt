@@ -7,7 +7,9 @@ data class ApplicationConfig(
     val environment: Environment,
     val neo4j: Neo4jConfig,
     val postgres: PostgresConfig,
-    val audit: AuditConfig
+    val audit: AuditConfig,
+    val jwt: JwtProperties,
+    val userLinks: UserLinksConfig
 )
 
 data class Neo4jConfig(
@@ -26,6 +28,19 @@ data class AuditConfig(
     val store: AuditStoreType
 )
 
+data class JwtProperties(
+    val secret: String,
+    val issuer: String,
+    val ttlSeconds: Long
+)
+
+data class UserLinksConfig(
+    val activationBaseUrl: String,
+    val passwordResetBaseUrl: String,
+    val deletionBaseUrl: String,
+    val emailChangeBaseUrl: String
+)
+
 enum class AuditStoreType {
     STDOUT,
     POSTGRES;
@@ -33,9 +48,7 @@ enum class AuditStoreType {
     companion object {
         fun fromValue(raw: String?): AuditStoreType = raw
             ?.takeIf { it.isNotBlank() }
-            ?.let { value ->
-                entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) }
-            }
+            ?.let { value -> entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } }
             ?: STDOUT
     }
 }
@@ -51,20 +64,18 @@ enum class Environment {
 
         fun fromValue(raw: String?): Environment = raw
             ?.takeIf { it.isNotBlank() }
-            ?.let { value ->
-                entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) }
-            }
+            ?.let { value -> entries.firstOrNull { it.name.equals(value.trim(), ignoreCase = true) } }
             ?: DEV
     }
 }
 
 object AppConfigLoader {
-        fun load(
-            environment: Environment = Environment.fromEnv(),
-            overrides: Map<String, String> = emptyMap()
-        ): ApplicationConfig {
-            val source = HashMap(System.getenv())
-            source.putAll(overrides)
+    fun load(
+        environment: Environment = Environment.fromEnv(),
+        overrides: Map<String, String> = emptyMap()
+    ): ApplicationConfig {
+        val source = HashMap(System.getenv())
+        source.putAll(overrides)
 
         fun read(key: String): String {
             val uppercaseKey = key.uppercase(Locale.getDefault())
@@ -94,6 +105,17 @@ object AppConfigLoader {
             ),
             audit = AuditConfig(
                 store = AuditStoreType.fromValue(readOptional("audit_store"))
+            ),
+            jwt = JwtProperties(
+                secret = read("jwt_secret"),
+                issuer = read("jwt_issuer"),
+                ttlSeconds = read("jwt_ttl_seconds").toLong()
+            ),
+            userLinks = UserLinksConfig(
+                activationBaseUrl = read("user_activation_base_url"),
+                passwordResetBaseUrl = read("user_password_reset_base_url"),
+                deletionBaseUrl = read("user_deletion_base_url"),
+                emailChangeBaseUrl = read("user_email_change_base_url")
             )
         )
     }
