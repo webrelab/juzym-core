@@ -15,12 +15,12 @@ class PostgresAuditEventStore(
         transaction(database) {
             AuditEventsTable.insert { statement ->
                 statement[AuditEventsTable.id] = eventId()
-                statement[AuditEventsTable.userId] = event.userId
-                statement[AuditEventsTable.action] = event.action
-                statement[AuditEventsTable.method] = event.method
-                statement[AuditEventsTable.arguments] = mapper.writeValueAsString(event.arguments)
-                statement[AuditEventsTable.durationMs] = event.executionTimeMs
-                statement[AuditEventsTable.createdAt] = event.createdAt
+                statement[userId] = event.userId
+                statement[action] = event.action
+                statement[method] = event.method
+                statement[arguments] = mapper.writeValueAsString(event.arguments)
+                statement[durationMs] = event.executionTimeMs
+                statement[createdAt] = event.createdAt
             }
         }
     }
