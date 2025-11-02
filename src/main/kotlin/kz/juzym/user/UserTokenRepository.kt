@@ -5,7 +5,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.Duration
@@ -53,7 +53,7 @@ class ExposedUserTokenRepository(
     }
 
     override fun findValidToken(token: String, type: UserTokenType): UserToken? = transaction(database) {
-        UserTokensTable.select { (UserTokensTable.token eq token) and (UserTokensTable.type eq type) }
+        UserTokensTable.selectAll().where { (UserTokensTable.token eq token) and (UserTokensTable.type eq type) }
             .singleOrNull()
             ?.toUserToken()
             ?.takeIf { !it.isExpired && !it.isConsumed }

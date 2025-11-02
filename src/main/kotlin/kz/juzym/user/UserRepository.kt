@@ -5,7 +5,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.util.UUID
@@ -27,13 +27,13 @@ class ExposedUserRepository(
 ) : UserRepository {
 
     override fun findByIin(iin: String): User? = transaction(database) {
-        UsersTable.select { UsersTable.iin eq iin }
+        UsersTable.selectAll().where { UsersTable.iin eq iin }
             .singleOrNull()
             ?.toUser()
     }
 
     override fun findById(id: UUID): User? = transaction(database) {
-        UsersTable.select { UsersTable.id eq id }
+        UsersTable.selectAll().where { UsersTable.id eq id }
             .singleOrNull()
             ?.toUser()
     }
@@ -83,7 +83,7 @@ class ExposedUserRepository(
 
     override fun verifyCredentials(iin: String, rawPassword: String): Boolean {
         val stored = transaction(database) {
-            UsersTable.select { UsersTable.iin eq iin }
+            UsersTable.selectAll().where { UsersTable.iin eq iin }
                 .singleOrNull()
                 ?.get(UsersTable.passwordHash)
         } ?: return false
