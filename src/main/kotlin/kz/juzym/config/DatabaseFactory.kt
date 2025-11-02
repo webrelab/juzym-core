@@ -5,6 +5,10 @@ import com.zaxxer.hikari.HikariDataSource
 import kz.juzym.audit.AuditEventsTable
 import kz.juzym.user.UserTokensTable
 import kz.juzym.user.UsersTable
+import kz.juzym.user.avatar.AvatarAchievementsTable
+import kz.juzym.user.avatar.AvatarSkillsTable
+import kz.juzym.user.avatar.AvatarStatsCacheTable
+import kz.juzym.user.avatar.AvatarsTable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -28,7 +32,15 @@ class DatabaseFactory(private val config: PostgresConfig) {
 
     fun ensureSchema(context: PostgresDatabaseContext) {
         transaction(context.database) {
-            SchemaUtils.create(UsersTable, UserTokensTable, AuditEventsTable)
+            SchemaUtils.create(
+                UsersTable,
+                UserTokensTable,
+                AuditEventsTable,
+                AvatarsTable,
+                AvatarSkillsTable,
+                AvatarAchievementsTable,
+                AvatarStatsCacheTable,
+            )
         }
     }
 
