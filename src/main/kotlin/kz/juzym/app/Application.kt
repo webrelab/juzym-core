@@ -16,6 +16,8 @@ import kz.juzym.graph.GraphService
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserService
 import kz.juzym.user.security.jwt.JwtService
+import io.lettuce.core.RedisClient
+import io.lettuce.core.api.StatefulRedisConnection
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.neo4j.driver.Driver
@@ -44,10 +46,15 @@ class Application(
         databaseFactory.verifyConnection(postgresContext)
         databaseFactory.ensureSchema(postgresContext)
 
+        val redisConnection = koin.get<StatefulRedisConnection<String, String>>()
+        redisConnection.sync().ping()
+
         return ApplicationContext(
             config = config,
             neo4jDriver = driver,
             postgres = postgresContext,
+            redisClient = koin.get(),
+            redisConnection = redisConnection,
             graphRepository = koin.get(),
             userRepository = koin.get(),
             userService = koin.get(),
@@ -70,6 +77,8 @@ data class ApplicationContext(
     val config: ApplicationConfig,
     val neo4jDriver: Driver,
     val postgres: PostgresDatabaseContext,
+    val redisClient: RedisClient,
+    val redisConnection: StatefulRedisConnection<String, String>,
     val graphRepository: GraphRepository,
     val userRepository: UserRepository,
     val userService: UserService,
@@ -81,6 +90,8 @@ data class ApplicationContext(
     fun close() {
         neo4jDriver.close()
         postgres.close()
+        redisConnection.close()
+        redisClient.shutdown()
         koinApplication.close()
     }
 }
