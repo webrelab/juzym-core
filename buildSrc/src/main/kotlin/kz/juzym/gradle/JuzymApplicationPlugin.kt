@@ -147,6 +147,7 @@ abstract class E2eApiTest : Test() {
     abstract val readinessPorts: ListProperty<Int>
     @get:Input
     abstract val applicationEnvironment: MapProperty<String, String>
+    @get:Input
     abstract val applicationHealthUrl: Property<String>
 
     init {
