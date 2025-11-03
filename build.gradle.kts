@@ -33,6 +33,7 @@ dependencies {
 
     implementation(libs.typesafe.config)
     implementation(libs.jackson.module.kotlin)
+    implementation(libs.jackson.datatype.jsr310)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
