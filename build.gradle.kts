@@ -1,5 +1,10 @@
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.language.base.plugins.LifecycleBasePlugin
+import org.gradle.jvm.tasks.Jar
+
 plugins {
-    kotlin("jvm") version "2.0.20"
+    alias(libs.plugins.kotlin.jvm)
+    application
 }
 
 group = "kz.juzym"
@@ -9,39 +14,37 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "2.3.12"
-
 dependencies {
-    implementation("org.neo4j.driver:neo4j-java-driver:5.21.0")
-    implementation("org.jetbrains.exposed:exposed-core:0.50.1")
-    implementation("org.jetbrains.exposed:exposed-dao:0.50.1")
-    implementation("org.jetbrains.exposed:exposed-jdbc:0.50.1")
-    implementation("org.jetbrains.exposed:exposed-java-time:0.50.1")
-    implementation("org.postgresql:postgresql:42.7.3")
-    implementation("com.zaxxer:HikariCP:5.1.0")
-    implementation("io.insert-koin:koin-core:3.5.6")
-    implementation("com.auth0:java-jwt:4.4.0")
-    implementation("org.mindrot:jbcrypt:0.4")
-    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
+    implementation(libs.neo4j.driver)
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.dao)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.java.time)
+    implementation(libs.postgresql)
+    implementation(libs.hikari)
+    implementation(libs.koin.core)
+    implementation(libs.jwt)
+    implementation(libs.jbcrypt)
+    implementation(libs.lettuce)
 
-    implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-jackson:$ktorVersion")
-    implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
-    implementation("ch.qos.logback:logback-classic:1.5.6")
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.netty)
+    implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.ktor.serialization.jackson)
+    implementation(libs.ktor.server.call.logging)
+    implementation(libs.logback.classic)
 
-    implementation("com.typesafe:config:1.4.3")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
+    implementation(libs.typesafe.config)
+    implementation(libs.jackson.module.kotlin)
 
     testImplementation(kotlin("test"))
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
-    testImplementation("org.neo4j.test:neo4j-harness:5.20.0") {
+    testImplementation(libs.junit)
+    testImplementation(libs.neo4j.harness) {
         exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
     }
-    testImplementation("org.slf4j:slf4j-simple:2.0.13")
-    testImplementation("io.zonky.test:embedded-postgres:2.0.4")
-    testImplementation("io.mockk:mockk:1.13.11")
+    testImplementation(libs.slf4j.simple)
+    testImplementation(libs.embedded.postgres)
+    testImplementation(libs.mockk)
 }
 
 tasks.test {
@@ -50,4 +53,30 @@ tasks.test {
 
 kotlin {
     jvmToolchain(21)
+}
+
+application {
+    mainClass.set("kz.juzym.core.MainKt")
+}
+
+val fatJar by tasks.registering(Jar::class) {
+    group = LifecycleBasePlugin.BUILD_GROUP
+    description = "Assembles a runnable fat jar"
+
+    archiveClassifier.set("all")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+
+    from(sourceSets.main.get().output)
+    from({
+        configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }
+            .map { zipTree(it) }
+    })
+}
+
+tasks.named(LifecycleBasePlugin.BUILD_TASK_NAME) {
+    dependsOn(fatJar)
 }
