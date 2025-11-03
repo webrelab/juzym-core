@@ -42,11 +42,30 @@ data class JwtProperties(
 )
 
 data class UserLinksConfig(
-    val activationBaseUrl: String,
-    val passwordResetBaseUrl: String,
-    val deletionBaseUrl: String,
+    val activationDomain: String,
+    val passwordResetDomain: String,
+    val deletionDomain: String,
+    val emailChangeDomain: String
+) {
+    companion object {
+        const val ACTIVATION_ENDPOINT = "/activate"
+        const val PASSWORD_RESET_ENDPOINT = "/reset"
+        const val DELETION_ENDPOINT = "/delete"
+        const val EMAIL_CHANGE_ENDPOINT = "/email"
+    }
+
+    val activationBaseUrl: String
+        get() = activationDomain + ACTIVATION_ENDPOINT
+
+    val passwordResetBaseUrl: String
+        get() = passwordResetDomain + PASSWORD_RESET_ENDPOINT
+
+    val deletionBaseUrl: String
+        get() = deletionDomain + DELETION_ENDPOINT
+
     val emailChangeBaseUrl: String
-)
+        get() = emailChangeDomain + EMAIL_CHANGE_ENDPOINT
+}
 
 data class ServerConfig(
     val host: String,
@@ -110,6 +129,16 @@ object AppConfigLoader {
             return readInternal(uppercaseKey)
         }
 
+        fun normalizeDomain(value: String): String = value.trim().removeSuffix("/")
+
+        fun readUserLinkDomain(key: String, fallback: String): String {
+            val raw = readOptional(key) ?: fallback
+            return normalizeDomain(raw)
+        }
+
+        val defaultUserLinksDomain = readOptional("user_links_domain")?.let(::normalizeDomain)
+            ?: "http://localhost:3000"
+
         return ApplicationConfig(
             environment = environment,
             neo4j = Neo4jConfig(
@@ -135,10 +164,10 @@ object AppConfigLoader {
                 ttlSeconds = read("jwt_ttl_seconds").toLong()
             ),
             userLinks = UserLinksConfig(
-                activationBaseUrl = read("user_activation_base_url"),
-                passwordResetBaseUrl = read("user_password_reset_base_url"),
-                deletionBaseUrl = read("user_deletion_base_url"),
-                emailChangeBaseUrl = read("user_email_change_base_url")
+                activationDomain = readUserLinkDomain("user_activation_domain", defaultUserLinksDomain),
+                passwordResetDomain = readUserLinkDomain("user_password_reset_domain", defaultUserLinksDomain),
+                deletionDomain = readUserLinkDomain("user_deletion_domain", defaultUserLinksDomain),
+                emailChangeDomain = readUserLinkDomain("user_email_change_domain", defaultUserLinksDomain)
             ),
             server = ServerConfig(
                 host = readOptional("server_host") ?: "0.0.0.0",
