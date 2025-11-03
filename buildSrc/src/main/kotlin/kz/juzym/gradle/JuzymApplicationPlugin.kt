@@ -17,7 +17,6 @@ import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
@@ -31,7 +30,6 @@ import org.gradle.kotlin.dsl.withType
 import org.gradle.language.base.plugins.LifecycleBasePlugin
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.Socket
 import java.net.URL
 import java.time.Duration
 import java.time.LocalDateTime
@@ -42,6 +40,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import kotlin.jvm.Volatile
+import org.gradle.api.tasks.SourceSet
+import java.net.Socket
+import org.neo4j.driver.AuthTokens
+import org.neo4j.driver.Config
+import org.neo4j.driver.GraphDatabase
 
 class JuzymApplicationPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -202,6 +205,7 @@ abstract class E2eApiTest : Test() {
             deleteDataDirectories(dockerDir)
             startDocker(dockerDir, composeFile)
             waitForServices(readinessPorts.get())
+            waitForNeo4j()
             startApplication()
             waitForHealth()
             super.executeTests()
@@ -292,6 +296,45 @@ abstract class E2eApiTest : Test() {
         ports.forEach { port ->
             waitForPort("localhost", port, timeout)
         }
+    }
+
+    private fun waitForNeo4j() {
+        val environment = applicationEnvironment.get()
+        val uri = environment["NEO4J_URI"]
+        val user = environment["NEO4J_USER"]
+        val password = environment["NEO4J_PASSWORD"]
+
+        if (uri.isNullOrBlank() || user.isNullOrBlank() || password.isNullOrBlank()) {
+            project.logger.lifecycle("[e2e] Skipping Neo4j readiness check due to missing credentials")
+            return
+        }
+
+        val config = Config.builder()
+            .withoutEncryption()
+            .build()
+        val timeout = Duration.ofMinutes(5)
+        val deadline = System.nanoTime() + timeout.toNanos()
+        project.logger.lifecycle("[e2e] Waiting for Neo4j connectivity at $uri")
+
+        while (System.nanoTime() < deadline) {
+            ensureDockerProcessAlive("waiting for Neo4j connectivity at $uri")
+            try {
+                GraphDatabase.driver(uri, AuthTokens.basic(user, password), config).use { driver ->
+                    driver.verifyConnectivity()
+                    project.logger.lifecycle("[e2e] Neo4j is ready at $uri")
+                    return
+                }
+            } catch (_: Exception) {
+                try {
+                    Thread.sleep(1_000)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    error("Interrupted while waiting for Neo4j connectivity at $uri")
+                }
+            }
+        }
+
+        error("Timed out waiting for Neo4j connectivity at $uri")
     }
 
     private fun waitForPort(host: String, port: Int, timeout: Duration) {
