@@ -69,7 +69,7 @@ class InMemoryRegistrationServiceTest {
 
         val verification = service.verifyEmail(token)
 
-        assertEquals(RegistrationStatus.active, verification.status)
+        assertEquals(RegistrationStatus.ACTIVE, verification.status)
         assertNotNull(verification.session.accessToken)
 
         assertThrows<RegistrationInvalidTokenException> {
@@ -78,7 +78,7 @@ class InMemoryRegistrationServiceTest {
 
         clock.advanceSeconds(3600)
         val status = service.getRegistrationStatus(request.email)
-        assertEquals(RegistrationStatus.active, status.status)
+        assertEquals(RegistrationStatus.ACTIVE, status.status)
         assertFalse(status.verification.required)
     }
 

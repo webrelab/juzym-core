@@ -8,7 +8,11 @@ import org.hamcrest.Matchers.hasItems
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import java.util.UUID
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.*
+import kotlin.random.Random
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RegistrationApiTest {
@@ -121,7 +125,7 @@ class RegistrationApiTest {
             .jsonPath()
 
         val verificationToken = resendJson.getString("debugVerificationToken") ?: initialToken
-        require(!verificationToken.isNullOrBlank()) { "Expected verification token after resend" }
+        require(verificationToken.isNotBlank()) { "Expected verification token after resend" }
 
         val verifyJson = RestAssured
             .given()
@@ -198,7 +202,13 @@ class RegistrationApiTest {
     }
 
     private fun generateIin(): String {
-        val random = UUID.randomUUID().toString().replace("-", "")
-        return random.take(12)
+        val randomTimeMillis = Random.nextLong(System.currentTimeMillis())
+        val formatter = DateTimeFormatter.ofPattern("YYMMdd")
+        val idRandom = Random.nextInt(999999)
+        val dateString = Instant.ofEpochMilli(randomTimeMillis)
+            .atZone(ZoneId.of("UTC"))
+            .format(formatter)
+        val idString = "%06d".format(idRandom)
+        return "$dateString$idString"
     }
 }

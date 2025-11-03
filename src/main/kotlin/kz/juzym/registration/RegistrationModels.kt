@@ -2,7 +2,7 @@ package kz.juzym.registration
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 data class EmailAvailabilityResponse(
     val email: String,
@@ -133,7 +133,7 @@ data class ApiErrorBody(
 )
 
 enum class RegistrationStatus {
-    pending,
-    active,
-    blocked
+    PENDING,
+    ACTIVE,
+    BLOCKED
 }

@@ -3,15 +3,14 @@ package kz.juzym.user.avatar
 import kz.juzym.core.FieldUpdate
 import kz.juzym.user.UsersTable
 import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.UUID
+import java.util.*
 
 class AvatarServiceImpl(
     private val database: org.jetbrains.exposed.sql.Database,
@@ -27,7 +26,9 @@ class AvatarServiceImpl(
         require(displayName.isNotBlank()) { "Display name is required" }
         requireNotNull(findUser(userId)) { "User $userId not found" }
 
-        val existing = AvatarsTable.select { AvatarsTable.userId eq userId }.count()
+        val existing = AvatarsTable.selectAll()
+            .where { AvatarsTable.userId eq userId }
+            .count()
         require(existing == 0L) { "Avatar already exists for user $userId" }
 
         val now = currentTime()
@@ -37,21 +38,25 @@ class AvatarServiceImpl(
             statement[AvatarsTable.displayName] = displayName
             statement[AvatarsTable.about] = about
             statement[AvatarsTable.photoUrl] = photoUrl
-            statement[AvatarsTable.level] = 1
-            statement[AvatarsTable.xp] = 0
-            statement[AvatarsTable.reputation] = 0
-            statement[AvatarsTable.createdAt] = now
-            statement[AvatarsTable.updatedAt] = now
+            statement[level] = 1
+            statement[xp] = 0
+            statement[reputation] = 0
+            statement[createdAt] = now
+            statement[updatedAt] = now
         } get AvatarsTable.id
     }.value
 
     override fun getAvatarByUserId(userId: UUID): AvatarProfile? = transaction(database) {
-        val avatarRow = AvatarsTable.select { AvatarsTable.userId eq userId }.singleOrNull() ?: return@transaction null
+        val avatarRow = AvatarsTable.selectAll()
+            .where { AvatarsTable.userId eq userId }
+            .singleOrNull() ?: return@transaction null
         val avatar = avatarRow.toAvatar()
-        val skills = AvatarSkillsTable.select { AvatarSkillsTable.avatarId eq avatar.id }
+        val skills = AvatarSkillsTable.selectAll()
+            .where { AvatarSkillsTable.avatarId eq avatar.id }
             .map { it.toAvatarSkill() }
             .sortedBy { it.code }
-        val achievements = AvatarAchievementsTable.select { AvatarAchievementsTable.avatarId eq avatar.id }
+        val achievements = AvatarAchievementsTable.selectAll()
+            .where { AvatarAchievementsTable.avatarId eq avatar.id }
             .map { it.toAvatarAchievement() }
             .sortedBy { it.code }
         val stats = resolveStats(avatarRow, avatar.id)
@@ -64,7 +69,8 @@ class AvatarServiceImpl(
         about: FieldUpdate<String?>,
         photoUrl: FieldUpdate<String?>,
     ): Avatar = transaction(database) {
-        val avatarExists = AvatarsTable.select { AvatarsTable.id eq avatarId }.singleOrNull()
+        val avatarExists = AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }.singleOrNull()
             ?: error("Avatar $avatarId not found")
 
         val updateDisplayName = displayName is FieldUpdate.Value
@@ -89,10 +95,13 @@ class AvatarServiceImpl(
             if (updatePhoto) {
                 statement[AvatarsTable.photoUrl] = (photoUrl as FieldUpdate.Value).value
             }
-            statement[AvatarsTable.updatedAt] = now
+            statement[updatedAt] = now
         }
 
-        AvatarsTable.select { AvatarsTable.id eq avatarId }.single().toAvatar()
+        AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }
+            .single()
+            .toAvatar()
     }
 
     override fun addAvatarSkill(
@@ -101,11 +110,13 @@ class AvatarServiceImpl(
         name: String?,
         level: Int?,
     ): AvatarSkill = transaction(database) {
-        val avatarExists = AvatarsTable.select { AvatarsTable.id eq avatarId }.count() > 0
+        val avatarExists = AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }.count() > 0
         require(avatarExists) { "Avatar $avatarId not found" }
 
         val now = currentTime()
-        val existing = AvatarSkillsTable.select {
+        val existing = AvatarSkillsTable.selectAll()
+            .where {
             (AvatarSkillsTable.avatarId eq avatarId) and (AvatarSkillsTable.code eq code)
         }.singleOrNull()
 
@@ -118,8 +129,8 @@ class AvatarServiceImpl(
                 statement[AvatarSkillsTable.code] = code
                 statement[AvatarSkillsTable.name] = name ?: code
                 statement[AvatarSkillsTable.level] = skillLevel
-                statement[AvatarSkillsTable.createdAt] = now
-                statement[AvatarSkillsTable.updatedAt] = now
+                statement[createdAt] = now
+                statement[updatedAt] = now
             }
         } else {
             val newLevel = level ?: existing[AvatarSkillsTable.level]
@@ -127,28 +138,31 @@ class AvatarServiceImpl(
             AvatarSkillsTable.update({ AvatarSkillsTable.id eq existing[AvatarSkillsTable.id].value }) { statement ->
                 statement[AvatarSkillsTable.level] = newLevel
                 statement[AvatarSkillsTable.name] = name ?: existing[AvatarSkillsTable.name]
-                statement[AvatarSkillsTable.updatedAt] = now
+                statement[updatedAt] = now
             }
         }
 
-        AvatarSkillsTable.select {
+        AvatarSkillsTable.selectAll()
+            .where {
             (AvatarSkillsTable.avatarId eq avatarId) and (AvatarSkillsTable.code eq code)
         }.single().toAvatarSkill()
     }
 
     override fun updateAvatarSkillLevel(avatarId: UUID, code: String, delta: Int): AvatarSkill = transaction(database) {
-        val row = AvatarSkillsTable.select {
+        val row = AvatarSkillsTable.selectAll()
+            .where {
             (AvatarSkillsTable.avatarId eq avatarId) and (AvatarSkillsTable.code eq code)
         }.singleOrNull() ?: error("Skill $code not found for avatar $avatarId")
 
         val newLevel = row[AvatarSkillsTable.level] + delta
         require(newLevel >= 0) { "Skill level cannot be negative" }
         AvatarSkillsTable.update({ AvatarSkillsTable.id eq row[AvatarSkillsTable.id].value }) { statement ->
-            statement[AvatarSkillsTable.level] = newLevel
-            statement[AvatarSkillsTable.updatedAt] = currentTime()
+            statement[level] = newLevel
+            statement[updatedAt] = currentTime()
         }
 
-        AvatarSkillsTable.select { AvatarSkillsTable.id eq row[AvatarSkillsTable.id].value }
+        AvatarSkillsTable.selectAll()
+            .where { AvatarSkillsTable.id eq row[AvatarSkillsTable.id].value }
             .single()
             .toAvatarSkill()
     }
@@ -159,10 +173,12 @@ class AvatarServiceImpl(
         title: String,
         description: String?,
     ): AvatarAchievement = transaction(database) {
-        val avatarExists = AvatarsTable.select { AvatarsTable.id eq avatarId }.count() > 0
+        val avatarExists = AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }.count() > 0
         require(avatarExists) { "Avatar $avatarId not found" }
 
-        val existing = AvatarAchievementsTable.select {
+        val existing = AvatarAchievementsTable.selectAll()
+            .where {
             (AvatarAchievementsTable.avatarId eq avatarId) and (AvatarAchievementsTable.code eq code)
         }.singleOrNull()
 
@@ -177,10 +193,11 @@ class AvatarServiceImpl(
             statement[AvatarAchievementsTable.code] = code
             statement[AvatarAchievementsTable.title] = title
             statement[AvatarAchievementsTable.description] = description
-            statement[AvatarAchievementsTable.receivedAt] = now
+            statement[receivedAt] = now
         }
 
-        AvatarAchievementsTable.select {
+        AvatarAchievementsTable.selectAll()
+            .where {
             (AvatarAchievementsTable.avatarId eq avatarId) and (AvatarAchievementsTable.code eq code)
         }.single().toAvatarAchievement()
     }
@@ -192,7 +209,8 @@ class AvatarServiceImpl(
     ): AvatarProgress = transaction(database) {
         require(xpDelta != null || reputationDelta != null) { "At least one delta must be provided" }
 
-        val row = AvatarsTable.select { AvatarsTable.id eq avatarId }.singleOrNull()
+        val row = AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }.singleOrNull()
             ?: error("Avatar $avatarId not found")
 
         val currentXp = row[AvatarsTable.xp]
@@ -207,22 +225,24 @@ class AvatarServiceImpl(
 
         val now = currentTime()
         AvatarsTable.update({ AvatarsTable.id eq avatarId }) { statement ->
-            statement[AvatarsTable.xp] = newXp
-            statement[AvatarsTable.reputation] = newReputation
-            statement[AvatarsTable.level] = newLevel
-            statement[AvatarsTable.updatedAt] = now
+            statement[xp] = newXp
+            statement[reputation] = newReputation
+            statement[level] = newLevel
+            statement[updatedAt] = now
         }
 
         AvatarProgress(avatarId, newLevel, newXp, newReputation)
     }
 
     override fun getAvatarStats(avatarId: UUID): AvatarStats? = transaction(database) {
-        val avatarRow = AvatarsTable.select { AvatarsTable.id eq avatarId }.singleOrNull() ?: return@transaction null
+        val avatarRow = AvatarsTable.selectAll()
+            .where { AvatarsTable.id eq avatarId }.singleOrNull() ?: return@transaction null
         resolveStats(avatarRow, avatarId)
     }
 
     private fun resolveStats(avatarRow: ResultRow, avatarId: UUID): AvatarStats {
-        val cacheRow = AvatarStatsCacheTable.select { AvatarStatsCacheTable.avatarId eq avatarId }.singleOrNull()
+        val cacheRow = AvatarStatsCacheTable.selectAll()
+            .where { AvatarStatsCacheTable.avatarId eq avatarId }.singleOrNull()
         val tasks = cacheRow?.get(AvatarStatsCacheTable.tasksCompleted) ?: 0
         val votes = cacheRow?.get(AvatarStatsCacheTable.votesParticipated) ?: 0
         val lastActivity = cacheRow?.get(AvatarStatsCacheTable.lastActivityAt)?.toInstant()
@@ -271,7 +291,8 @@ class AvatarServiceImpl(
         receivedAt = this[AvatarAchievementsTable.receivedAt].toInstant(),
     )
 
-    private fun findUser(userId: UUID): ResultRow? = UsersTable.select { UsersTable.id eq userId }.singleOrNull()
+    private fun findUser(userId: UUID): ResultRow? = UsersTable.selectAll()
+        .where { UsersTable.id eq userId }.singleOrNull()
 
     private fun currentTime(): OffsetDateTime = OffsetDateTime.now(ZoneOffset.UTC)
 }

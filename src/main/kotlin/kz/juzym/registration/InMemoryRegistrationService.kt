@@ -1,7 +1,7 @@
 package kz.juzym.registration
 
-import kz.juzym.registration.RegistrationStatus.pending
-import kz.juzym.registration.RegistrationStatus.active
+import kz.juzym.registration.RegistrationStatus.PENDING
+import kz.juzym.registration.RegistrationStatus.ACTIVE
 import java.time.Clock
 import java.security.MessageDigest
 import java.time.Instant
@@ -63,7 +63,7 @@ class InMemoryRegistrationService(
             acceptedTermsVersion = request.acceptedTermsVersion!!,
             acceptedPrivacyVersion = request.acceptedPrivacyVersion!!,
             marketingOptIn = request.marketingOptIn ?: false,
-            status = pending,
+            status = PENDING,
             emailTokenExpiresAt = expiresAt,
             verificationToken = verificationToken,
             lastEmailSentAt = now,
@@ -76,7 +76,7 @@ class InMemoryRegistrationService(
         tokens[verificationToken] = TokenRecord(userId = userId, expiresAt = expiresAt)
         val response = RegistrationResponse(
             userId = userId,
-            status = pending,
+            status = PENDING,
             emailVerification = EmailVerificationInfo(
                 sent = true,
                 method = "link",
@@ -95,7 +95,7 @@ class InMemoryRegistrationService(
         if (record == null || record.iin != normalizedIin) {
             throw RegistrationNotFoundException("not_found_if_not_pending", "Registration not found")
         }
-        if (record.status != pending) {
+        if (record.status != PENDING) {
             throw RegistrationConflictException("not_found_if_not_pending", "Registration is not pending")
         }
         val counter = resendCounters.computeIfAbsent(record.userId.toString()) { ResendCounter() }
@@ -134,10 +134,10 @@ class InMemoryRegistrationService(
         }
         val registration = registrations.values.singleOrNull { it.userId == record.userId }
             ?: throw RegistrationInvalidTokenException("invalid_or_expired_token", "Verification token not found")
-        if (registration.status == active) {
+        if (registration.status == ACTIVE) {
             throw RegistrationConflictException("already_verified", "Email already verified")
         }
-        registration.status = active
+        registration.status = ACTIVE
         registration.avatarId = registration.avatarId ?: UUID.randomUUID()
         tokens.remove(token)
         val expiresAt = clock.instant().plusSeconds(3600)
@@ -148,7 +148,7 @@ class InMemoryRegistrationService(
         )
         return VerificationResponse(
             userId = registration.userId,
-            status = active,
+            status = ACTIVE,
             avatarId = registration.avatarId!!,
             session = session
         )
@@ -157,7 +157,7 @@ class InMemoryRegistrationService(
     override fun completeProfile(userId: UUID, request: CompleteProfileRequest): CompleteProfileResponse {
         val registration = registrations.values.singleOrNull { it.userId == userId }
             ?: throw RegistrationUnauthorizedException("User not found")
-        if (registration.status != active) {
+        if (registration.status != ACTIVE) {
             throw RegistrationConflictException("avatar_locked", "Profile cannot be updated in current status")
         }
         val updated = mutableListOf<String>()
@@ -236,7 +236,7 @@ class InMemoryRegistrationService(
             email = normalizedEmail,
             status = registration.status,
             verification = VerificationStatus(
-                required = registration.status != active,
+                required = registration.status != ACTIVE,
                 resentCooldownSec = cooldown
             )
         )
