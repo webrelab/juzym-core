@@ -19,6 +19,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
@@ -40,6 +41,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import kotlin.jvm.Volatile
 
 class JuzymApplicationPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -150,6 +152,8 @@ abstract class E2eApiTest : Test() {
     private var applicationLogs: ExecutorService? = null
     private var applicationOutput: Future<*>? = null
     private var currentLogsDirectory: File? = null
+    @Volatile
+    private var cleanupPerformed: Boolean = true
 
     @get:Classpath
     abstract val fatJarArchive: RegularFileProperty
@@ -168,24 +172,49 @@ abstract class E2eApiTest : Test() {
     abstract val logsDirectory: DirectoryProperty
 
     init {
-        doFirst {
-            prepareLogsDirectory()
-            val dockerDir = dockerWorkingDirectory.get().asFile
-            deleteDataDirectories(dockerDir)
-            startDocker(dockerDir)
-            waitForServices(readinessPorts.get())
-            startApplication()
-            waitForHealth()
-        }
-
-        doLast {
-            stopApplication()
-            stopDocker()
-        }
-
         project.gradle.buildFinished {
             stopApplication()
             stopDocker()
+            if (!cleanupPerformed) {
+                val dockerDir = dockerWorkingDirectory.orNull?.asFile
+                val composeFile = dockerComposeFile.orNull?.asFile
+                if (dockerDir != null && composeFile != null && composeFile.exists()) {
+                    runCleanup("build finished cleanup") {
+                        runDockerComposeDown(dockerDir, composeFile, "build finished cleanup", "docker-compose-down-build-finished.log")
+                    }
+                }
+                cleanupPerformed = true
+            }
+        }
+    }
+
+    @TaskAction
+    override fun executeTests() {
+        val dockerDir = dockerWorkingDirectory.get().asFile
+        val composeFile = dockerComposeFile.get().asFile
+        require(composeFile.exists()) { "docker-compose file not found at ${composeFile.absolutePath}" }
+
+        prepareLogsDirectory()
+        cleanupPerformed = false
+
+        try {
+            runDockerComposeDown(dockerDir, composeFile, "pre-run cleanup", "docker-compose-down-before.log")
+            deleteDataDirectories(dockerDir)
+            startDocker(dockerDir, composeFile)
+            waitForServices(readinessPorts.get())
+            startApplication()
+            waitForHealth()
+            super.executeTests()
+        } finally {
+            var cleanupSucceeded = true
+            cleanupSucceeded = cleanupSucceeded && runCleanup("application shutdown") { stopApplication() }
+            cleanupSucceeded = cleanupSucceeded && runCleanup("docker compose shutdown") { stopDocker() }
+            cleanupSucceeded = cleanupSucceeded && runCleanup("post-run cleanup") {
+                if (composeFile.exists()) {
+                    runDockerComposeDown(dockerDir, composeFile, "post-run cleanup", "docker-compose-down-after.log")
+                }
+            }
+            cleanupPerformed = cleanupSucceeded
         }
     }
 
@@ -203,8 +232,28 @@ abstract class E2eApiTest : Test() {
         project.logger.lifecycle("[e2e] Writing process logs to ${runDir.absolutePath}")
     }
 
-    private fun logsDir(): File = currentLogsDirectory
-        ?: error("Logs directory has not been prepared")
+    private fun logsDir(): File {
+        val existing = currentLogsDirectory
+        if (existing != null) {
+            return existing
+        }
+        val base = logsDirectory.get().asFile
+        if (!base.exists()) {
+            base.mkdirs()
+        }
+        val fallback = base.resolve("run-${timestamp()}")
+        fallback.mkdirs()
+        currentLogsDirectory = fallback
+        return fallback
+    }
+
+    private fun logFile(name: String): File {
+        val directory = logsDir()
+        if (!directory.exists()) {
+            directory.mkdirs()
+        }
+        return directory.resolve(name)
+    }
 
     private fun timestamp(): String = LocalDateTime.now()
         .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"))
@@ -219,11 +268,8 @@ abstract class E2eApiTest : Test() {
         }
     }
 
-    private fun startDocker(dockerDir: File) {
-        val composeFile = dockerComposeFile.get().asFile
+    private fun startDocker(dockerDir: File, composeFile: File) {
         require(composeFile.exists()) { "docker-compose file not found at ${composeFile.absolutePath}" }
-
-        runDockerComposeDown(dockerDir, composeFile)
 
         val command = resolveDockerComposeCommand(composeFile)
         project.logger.lifecycle("[e2e] Starting docker compose: ${command.joinToString(" ")}")
@@ -236,7 +282,7 @@ abstract class E2eApiTest : Test() {
         composeLogs = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "e2e-docker-logs").apply { isDaemon = true }
         }
-        val dockerLogFile = logsDir().resolve("docker-compose.log")
+        val dockerLogFile = logFile("docker-compose.log")
         composeOutput = composeLogs?.submit(logStreamTask(composeProcess!!, project.logger, "docker", dockerLogFile))
     }
 
@@ -251,6 +297,7 @@ abstract class E2eApiTest : Test() {
     private fun waitForPort(host: String, port: Int, timeout: Duration) {
         val deadline = System.nanoTime() + timeout.toNanos()
         while (System.nanoTime() < deadline) {
+            ensureDockerProcessAlive("waiting for service on $host:$port")
             try {
                 Socket(host, port).use {
                     project.logger.lifecycle("[e2e] Service available on $host:$port")
@@ -283,7 +330,7 @@ abstract class E2eApiTest : Test() {
         applicationLogs = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "e2e-app-logs").apply { isDaemon = true }
         }
-        val appLogFile = logsDir().resolve("application.log")
+        val appLogFile = logFile("application.log")
         applicationOutput = applicationLogs?.submit(logStreamTask(applicationProcess!!, project.logger, "app", appLogFile))
     }
 
@@ -292,6 +339,7 @@ abstract class E2eApiTest : Test() {
         val timeout = System.nanoTime() + Duration.ofMinutes(5).toNanos()
         project.logger.lifecycle("[e2e] Waiting for application health at $healthUrl")
         while (System.nanoTime() < timeout) {
+            ensureApplicationProcessAlive("waiting for application health at $healthUrl")
             try {
                 val connection = healthUrl.openConnection() as HttpURLConnection
                 connection.connectTimeout = 2_000
@@ -317,61 +365,75 @@ abstract class E2eApiTest : Test() {
     }
 
     private fun stopApplication() {
-        project.logger.lifecycle("[e2e] Stopping application process")
-        applicationOutput?.cancel(true)
-        applicationLogs?.shutdownNow()
-        applicationProcess?.let { process ->
-            process.destroy()
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-            }
-            if (process.isAlive) {
-                project.logger.lifecycle("[e2e] Application process terminated forcefully")
-            } else {
-                project.logger.lifecycle("[e2e] Application process exited with code ${process.exitValue()}")
-            }
+        val process = applicationProcess
+        if (process == null) {
+            return
         }
+
+        project.logger.lifecycle("[e2e] Stopping application process")
+        process.destroy()
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            project.logger.lifecycle("[e2e] Application did not exit gracefully within timeout; forcing termination")
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+        val exitCode = runCatching { process.exitValue() }.getOrElse { -1 }
+        project.logger.lifecycle("[e2e] Application process exited with code $exitCode")
+
+        awaitTermination(applicationLogs)
+        applicationOutput = null
+        applicationLogs = null
         applicationProcess = null
     }
 
     private fun stopDocker() {
-        project.logger.lifecycle("[e2e] Stopping docker compose process")
-        composeOutput?.cancel(true)
-        composeLogs?.shutdownNow()
-        composeProcess?.let { process ->
-            process.destroy()
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-            }
-            if (process.isAlive) {
-                project.logger.lifecycle("[e2e] Docker compose process terminated forcefully")
-            } else {
-                project.logger.lifecycle("[e2e] Docker compose process exited with code ${process.exitValue()}")
-            }
+        val process = composeProcess
+        if (process == null) {
+            return
         }
-        composeProcess = null
 
-        val composeFile = dockerComposeFile.orNull?.asFile ?: return
-        runDockerComposeDown(dockerWorkingDirectory.get().asFile, composeFile)
+        project.logger.lifecycle("[e2e] Stopping docker compose process")
+        process.destroy()
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            project.logger.lifecycle("[e2e] Docker compose did not exit gracefully within timeout; forcing termination")
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+        val exitCode = runCatching { process.exitValue() }.getOrElse { -1 }
+        project.logger.lifecycle("[e2e] Docker compose process exited with code $exitCode")
+
+        awaitTermination(composeLogs)
+        composeOutput = null
+        composeLogs = null
+        composeProcess = null
     }
 
-    private fun runDockerComposeDown(dockerDir: File, composeFile: File) {
+    private fun runDockerComposeDown(
+        dockerDir: File,
+        composeFile: File,
+        reason: String,
+        logFileName: String
+    ) {
         val command = resolveDockerComposeCommand(composeFile, down = true)
-        project.logger.lifecycle("[e2e] Running docker compose down: ${command.joinToString(" ")}")
+        project.logger.lifecycle("[e2e] Running docker compose down ($reason): ${command.joinToString(" ")}")
         val downProcess = ProcessBuilder(command)
             .directory(dockerDir)
             .redirectErrorStream(true)
             .start()
-        val downLogFile = currentLogsDirectory?.resolve("docker-compose-down.log")
-        downLogFile?.parentFile?.mkdirs()
-        downProcess.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach { line ->
-                project.logger.lifecycle("[docker-down] $line")
-                downLogFile?.appendText(line + System.lineSeparator())
+
+        val downLogFile = logFile(logFileName)
+        downLogFile.parentFile.mkdirs()
+        downLogFile.printWriter().use { writer ->
+            downProcess.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    project.logger.lifecycle("[docker-down] $line")
+                    writer.println(line)
+                }
             }
         }
+
         val exitCode = downProcess.waitFor()
-        project.logger.lifecycle("[e2e] Docker compose down completed with exit code $exitCode")
+        project.logger.lifecycle("[e2e] Docker compose down ($reason) completed with exit code $exitCode")
     }
 
     private fun resolveDockerComposeCommand(file: File, down: Boolean = false): List<String> {
@@ -403,6 +465,24 @@ abstract class E2eApiTest : Test() {
         }
     }
 
+    private fun ensureDockerProcessAlive(stage: String) {
+        composeProcess?.let { process ->
+            if (!process.isAlive) {
+                val exitCode = runCatching { process.exitValue() }.getOrElse { -1 }
+                error("Docker compose process exited while $stage (exit code $exitCode). Check docker-compose.log for details")
+            }
+        }
+    }
+
+    private fun ensureApplicationProcessAlive(stage: String) {
+        applicationProcess?.let { process ->
+            if (!process.isAlive) {
+                val exitCode = runCatching { process.exitValue() }.getOrElse { -1 }
+                error("Application process exited while $stage (exit code $exitCode). Check application.log for details")
+            }
+        }
+    }
+
     private fun logStreamTask(process: Process, logger: Logger, prefix: String, logFile: File): Callable<Unit> = Callable {
         logFile.parentFile.mkdirs()
         logFile.outputStream().bufferedWriter().use { writer ->
@@ -413,6 +493,28 @@ abstract class E2eApiTest : Test() {
                     writer.flush()
                 }
             }
+        }
+    }
+
+    private fun awaitTermination(executor: ExecutorService?) {
+        if (executor == null) {
+            return
+        }
+        executor.shutdown()
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+    }
+
+    private fun runCleanup(stage: String, action: () -> Unit): Boolean {
+        return try {
+            action()
+            true
+        } catch (ex: Exception) {
+            project.logger.error("[e2e] Failed during $stage", ex)
+            false
         }
     }
 }
