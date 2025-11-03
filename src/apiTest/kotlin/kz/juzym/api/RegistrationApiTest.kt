@@ -2,6 +2,7 @@ package kz.juzym.api
 
 import io.restassured.RestAssured
 import io.restassured.http.ContentType
+import kz.juzym.user.UserStatus
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThanOrEqualTo
 import org.hamcrest.Matchers.hasItems
@@ -78,7 +79,7 @@ class RegistrationApiTest {
             .post("/auth/registration")
             .then()
             .statusCode(201)
-            .body("status", equalTo("pending"))
+            .body("status", equalTo(UserStatus.PENDING.name))
             .extract()
             .jsonPath()
 
@@ -93,7 +94,7 @@ class RegistrationApiTest {
             .get("/auth/registration/status")
             .then()
             .statusCode(200)
-            .body("status", equalTo("pending"))
+            .body("status", equalTo(UserStatus.PENDING.name))
             .body("verification.required", equalTo(true))
 
         RestAssured
@@ -135,7 +136,7 @@ class RegistrationApiTest {
             .post("/auth/registration/verify-email")
             .then()
             .statusCode(200)
-            .body("status", equalTo("active"))
+            .body("status", equalTo(UserStatus.ACTIVE.name))
             .extract()
             .jsonPath()
 
@@ -167,7 +168,7 @@ class RegistrationApiTest {
             .get("/auth/registration/status")
             .then()
             .statusCode(200)
-            .body("status", equalTo("active"))
+            .body("status", equalTo(UserStatus.ACTIVE.name))
             .body("verification.required", equalTo(false))
 
         val forgotJson = RestAssured

@@ -374,9 +374,9 @@ abstract class E2eApiTest : Test() {
 
     private fun waitForHealth() {
         val healthUrl = URI(applicationHealthUrl.get()).toURL()
-        val timeout = System.nanoTime() + Duration.ofMinutes(5).toNanos()
+        val timeout = System.currentTimeMillis() + Duration.ofMinutes(5).toMillis()
         project.logger.lifecycle("[e2e] Waiting for application health at $healthUrl")
-        while (System.nanoTime() < timeout) {
+        while (System.currentTimeMillis() < timeout) {
             ensureApplicationProcessAlive("waiting for application health at $healthUrl")
             try {
                 val connection = healthUrl.openConnection() as HttpURLConnection
@@ -387,6 +387,7 @@ abstract class E2eApiTest : Test() {
                 connection.inputStream.use { }
                 if (code in 200..299) {
                     project.logger.lifecycle("[e2e] Application is healthy at $healthUrl")
+                    Thread.sleep(1_000)
                     return
                 }
             } catch (_: Exception) {
