@@ -1,10 +1,7 @@
-import org.gradle.api.file.DuplicatesStrategy
-import org.gradle.language.base.plugins.LifecycleBasePlugin
-import org.gradle.jvm.tasks.Jar
-
 plugins {
     alias(libs.plugins.kotlin.jvm)
     application
+    id("kz.juzym.gradle.application")
 }
 
 group = "kz.juzym"
@@ -45,10 +42,8 @@ dependencies {
     testImplementation(libs.slf4j.simple)
     testImplementation(libs.embedded.postgres)
     testImplementation(libs.mockk)
-}
 
-tasks.test {
-    useJUnitPlatform()
+    apiTestImplementation(libs.rest.assured)
 }
 
 kotlin {
@@ -57,26 +52,4 @@ kotlin {
 
 application {
     mainClass.set("kz.juzym.core.MainKt")
-}
-
-val fatJar by tasks.registering(Jar::class) {
-    group = LifecycleBasePlugin.BUILD_GROUP
-    description = "Assembles a runnable fat jar"
-
-    archiveClassifier.set("all")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    manifest {
-        attributes["Main-Class"] = application.mainClass.get()
-    }
-
-    from(sourceSets.main.get().output)
-    from({
-        configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }
-            .map { zipTree(it) }
-    })
-}
-
-tasks.named(LifecycleBasePlugin.BUILD_TASK_NAME) {
-    dependsOn(fatJar)
 }

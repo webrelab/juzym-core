@@ -17,6 +17,7 @@ neo4j-harness = "5.20.0"
 slf4j = "2.0.13"
 embedded-postgres = "2.0.4"
 mockk = "1.13.11"
+rest-assured = "5.4.0"
 
 [libraries]
 neo4j-driver = { module = "org.neo4j.driver:neo4j-java-driver", version.ref = "neo4j" }
@@ -43,6 +44,7 @@ neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4j-
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "embedded-postgres" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+rest-assured = { module = "io.rest-assured:rest-assured", version.ref = "rest-assured" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
