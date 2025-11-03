@@ -13,6 +13,7 @@ import kz.juzym.config.Environment
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
+import kz.juzym.registration.RegistrationService
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserService
 import kz.juzym.user.security.jwt.JwtService
@@ -61,6 +62,7 @@ class Application(
             jwtService = koin.get(),
             graphService = koin.get(),
             auditEventStore = koin.get(),
+            registrationService = koin.get(),
             koinApplication = koinApplication
         )
     }
@@ -85,6 +87,7 @@ data class ApplicationContext(
     val jwtService: JwtService,
     val graphService: GraphService,
     val auditEventStore: AuditEventStore,
+    val registrationService: RegistrationService,
     private val koinApplication: KoinApplication
 ) {
     fun close() {
