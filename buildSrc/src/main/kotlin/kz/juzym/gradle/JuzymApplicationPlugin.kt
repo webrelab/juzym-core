@@ -10,6 +10,7 @@ import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskProvider
@@ -144,6 +145,7 @@ abstract class E2eApiTest : Test() {
     abstract val dockerComposeFile: RegularFileProperty
     abstract val dockerWorkingDirectory: DirectoryProperty
     abstract val readinessPorts: ListProperty<Int>
+    @get:Input
     abstract val applicationEnvironment: MapProperty<String, String>
     abstract val applicationHealthUrl: Property<String>
 
