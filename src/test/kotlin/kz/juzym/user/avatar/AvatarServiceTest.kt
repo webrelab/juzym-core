@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.UUID
+import java.util.*
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -122,11 +122,11 @@ class AvatarServiceTest {
         transaction(context.database) {
             UsersTable.insert { statement ->
                 statement[UsersTable.id] = userId
-                statement[UsersTable.iin] = UUID.randomUUID().toString().replace("-", "").take(12)
-                statement[UsersTable.email] = "user-${userId}@example.com"
-                statement[UsersTable.passwordHash] = "hash"
-                statement[UsersTable.status] = kz.juzym.user.UserStatus.ACTIVE
-                statement[UsersTable.createdAt] = OffsetDateTime.now(ZoneOffset.UTC)
+                statement[iin] = UUID.randomUUID().toString().replace("-", "").take(12)
+                statement[email] = "user-${userId}@example.com"
+                statement[passwordHash] = "hash"
+                statement[status] = kz.juzym.user.UserStatus.ACTIVE
+                statement[createdAt] = OffsetDateTime.now(ZoneOffset.UTC)
             }
         }
         return userId

@@ -2,8 +2,8 @@ package kz.juzym.gradle
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.logging.Logger
 import org.gradle.api.plugins.JavaApplication
@@ -14,23 +14,24 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
-import org.gradle.kotlin.dsl.getByName
-import org.gradle.kotlin.dsl.getByType
-import org.gradle.kotlin.dsl.named
-import org.gradle.kotlin.dsl.register
 import org.gradle.kotlin.dsl.withType
 import org.gradle.language.base.plugins.LifecycleBasePlugin
+import org.neo4j.driver.AuthTokens
+import org.neo4j.driver.Config
+import org.neo4j.driver.GraphDatabase
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.Socket
+import java.net.URI
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -39,12 +40,6 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
-import kotlin.jvm.Volatile
-import org.gradle.api.tasks.SourceSet
-import java.net.Socket
-import org.neo4j.driver.AuthTokens
-import org.neo4j.driver.Config
-import org.neo4j.driver.GraphDatabase
 
 class JuzymApplicationPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -378,10 +373,10 @@ abstract class E2eApiTest : Test() {
     }
 
     private fun waitForHealth() {
-        val healthUrl = URL(applicationHealthUrl.get())
-        val timeout = System.nanoTime() + Duration.ofMinutes(5).toNanos()
+        val healthUrl = URI(applicationHealthUrl.get()).toURL()
+        val timeout = System.currentTimeMillis() + Duration.ofMinutes(5).toMillis()
         project.logger.lifecycle("[e2e] Waiting for application health at $healthUrl")
-        while (System.nanoTime() < timeout) {
+        while (System.currentTimeMillis() < timeout) {
             ensureApplicationProcessAlive("waiting for application health at $healthUrl")
             try {
                 val connection = healthUrl.openConnection() as HttpURLConnection
@@ -392,6 +387,7 @@ abstract class E2eApiTest : Test() {
                 connection.inputStream.use { }
                 if (code in 200..299) {
                     project.logger.lifecycle("[e2e] Application is healthy at $healthUrl")
+                    Thread.sleep(1_000)
                     return
                 }
             } catch (_: Exception) {
@@ -408,10 +404,7 @@ abstract class E2eApiTest : Test() {
     }
 
     private fun stopApplication() {
-        val process = applicationProcess
-        if (process == null) {
-            return
-        }
+        val process = applicationProcess ?: return
 
         project.logger.lifecycle("[e2e] Stopping application process")
         process.destroy()
@@ -430,10 +423,7 @@ abstract class E2eApiTest : Test() {
     }
 
     private fun stopDocker() {
-        val process = composeProcess
-        if (process == null) {
-            return
-        }
+        val process = composeProcess ?: return
 
         project.logger.lifecycle("[e2e] Stopping docker compose process")
         process.destroy()

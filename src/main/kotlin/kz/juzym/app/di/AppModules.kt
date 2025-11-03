@@ -8,6 +8,7 @@ import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.AuditConfig
 import kz.juzym.config.AuditStoreType
 import kz.juzym.config.DatabaseFactory
+import kz.juzym.config.Environment
 import kz.juzym.config.JwtProperties
 import kz.juzym.config.Neo4jConfig
 import kz.juzym.config.PostgresConfig
@@ -17,6 +18,9 @@ import kz.juzym.config.UserLinksConfig
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
+import kz.juzym.registration.InMemoryRegistrationService
+import kz.juzym.registration.RegistrationConfig
+import kz.juzym.registration.RegistrationService
 import kz.juzym.user.ConsoleMailSenderStub
 import kz.juzym.user.ExposedUserRepository
 import kz.juzym.user.ExposedUserTokenRepository
@@ -127,5 +131,18 @@ val serviceModule = module {
     single<GraphService> {
         val real: GraphService = get<GraphServiceImpl>()
         auditProxy(real, get())
+    }
+    single {
+        val appConfig = get<ApplicationConfig>()
+        val defaults = RegistrationConfig()
+        defaults.copy(
+            resendCooldownSeconds = if (appConfig.environment == Environment.TEST) 1 else defaults.resendCooldownSeconds,
+            exposeDebugTokens = appConfig.environment == Environment.TEST
+        )
+    }
+    single { InMemoryRegistrationService(get()) }
+    single<RegistrationService> {
+        val implementation: RegistrationService = get<InMemoryRegistrationService>()
+        auditProxy(implementation, get())
     }
 }
