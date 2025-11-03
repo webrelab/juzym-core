@@ -10,7 +10,12 @@ import org.gradle.api.plugins.JavaApplication
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskProvider
@@ -141,9 +146,14 @@ abstract class E2eApiTest : Test() {
     private var applicationLogs: ExecutorService? = null
     private var applicationOutput: Future<*>? = null
 
+    @get:Classpath
     abstract val fatJarArchive: RegularFileProperty
+    @get:InputFile
     abstract val dockerComposeFile: RegularFileProperty
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dockerWorkingDirectory: DirectoryProperty
+    @get:Input
     abstract val readinessPorts: ListProperty<Int>
     @get:Input
     abstract val applicationEnvironment: MapProperty<String, String>
