@@ -89,31 +89,38 @@ object AppConfigLoader {
         val source = HashMap(System.getenv())
         source.putAll(overrides)
 
+        fun readInternal(uppercaseKey: String): String? {
+            val environmentKey = "${uppercaseKey}_${environment.name}"
+            return source[environmentKey] ?: source[uppercaseKey]
+        }
+
         fun read(key: String): String {
             val uppercaseKey = key.uppercase(Locale.getDefault())
-            val environmentKey = "${uppercaseKey}_${environment.name}"
-            return source[environmentKey]
-                ?: source[uppercaseKey]
+            return readInternal(uppercaseKey)
                 ?: error("Missing configuration value for $uppercaseKey in environment ${environment.name}")
+        }
+
+        fun read(key: String, defaultValue: () -> String): String {
+            val uppercaseKey = key.uppercase(Locale.getDefault())
+            return readInternal(uppercaseKey) ?: defaultValue()
         }
 
         fun readOptional(key: String): String? {
             val uppercaseKey = key.uppercase(Locale.getDefault())
-            val environmentKey = "${uppercaseKey}_${environment.name}"
-            return source[environmentKey] ?: source[uppercaseKey]
+            return readInternal(uppercaseKey)
         }
 
         return ApplicationConfig(
             environment = environment,
             neo4j = Neo4jConfig(
-                uri = read("neo4j_uri"),
-                user = read("neo4j_user"),
-                password = read("neo4j_password")
+                uri = read("neo4j_uri") { "bolt://localhost:7687" },
+                user = read("neo4j_user") { "neo4j" },
+                password = read("neo4j_password") { "juzymneo4j" }
             ),
             postgres = PostgresConfig(
-                jdbcUrl = read("postgres_url"),
-                user = read("postgres_user"),
-                password = read("postgres_password")
+                jdbcUrl = read("postgres_url") { "jdbc:postgresql://localhost:5432/juzym" },
+                user = read("postgres_user") { "juzym" },
+                password = read("postgres_password") { "juzym" }
             ),
             redis = RedisConfig(
                 host = readOptional("redis_host") ?: "localhost",
