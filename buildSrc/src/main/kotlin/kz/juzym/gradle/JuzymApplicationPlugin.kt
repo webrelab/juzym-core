@@ -14,8 +14,9 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskProvider
@@ -32,6 +33,8 @@ import java.net.HttpURLConnection
 import java.net.Socket
 import java.net.URL
 import java.time.Duration
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -134,6 +137,7 @@ class JuzymApplicationPlugin : Plugin<Project> {
                 )
             )
             systemProperty("apiTest.baseUri", "http://localhost:8080")
+            logsDirectory.set(layout.buildDirectory.dir("e2e-logs"))
         }
     }
 }
@@ -145,6 +149,7 @@ abstract class E2eApiTest : Test() {
     private var applicationProcess: Process? = null
     private var applicationLogs: ExecutorService? = null
     private var applicationOutput: Future<*>? = null
+    private var currentLogsDirectory: File? = null
 
     @get:Classpath
     abstract val fatJarArchive: RegularFileProperty
@@ -159,9 +164,12 @@ abstract class E2eApiTest : Test() {
     abstract val applicationEnvironment: MapProperty<String, String>
     @get:Input
     abstract val applicationHealthUrl: Property<String>
+    @get:OutputDirectory
+    abstract val logsDirectory: DirectoryProperty
 
     init {
         doFirst {
+            prepareLogsDirectory()
             val dockerDir = dockerWorkingDirectory.get().asFile
             deleteDataDirectories(dockerDir)
             startDocker(dockerDir)
@@ -180,6 +188,26 @@ abstract class E2eApiTest : Test() {
             stopDocker()
         }
     }
+
+    private fun prepareLogsDirectory() {
+        val baseDir = logsDirectory.get().asFile
+        if (!baseDir.exists()) {
+            check(baseDir.mkdirs()) { "Failed to create base logs directory at ${baseDir.absolutePath}" }
+        }
+        val runDir = baseDir.resolve("run-${timestamp()}")
+        if (runDir.exists()) {
+            runDir.deleteRecursively()
+        }
+        check(runDir.mkdirs() || runDir.exists()) { "Failed to create logs directory at ${runDir.absolutePath}" }
+        currentLogsDirectory = runDir
+        project.logger.lifecycle("[e2e] Writing process logs to ${runDir.absolutePath}")
+    }
+
+    private fun logsDir(): File = currentLogsDirectory
+        ?: error("Logs directory has not been prepared")
+
+    private fun timestamp(): String = LocalDateTime.now()
+        .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"))
 
     private fun deleteDataDirectories(dockerDir: File) {
         listOf("neo4j", "postgres").forEach { name ->
@@ -208,11 +236,13 @@ abstract class E2eApiTest : Test() {
         composeLogs = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "e2e-docker-logs").apply { isDaemon = true }
         }
-        composeOutput = composeLogs?.submit(logStreamTask(composeProcess!!, project.logger, "docker"))
+        val dockerLogFile = logsDir().resolve("docker-compose.log")
+        composeOutput = composeLogs?.submit(logStreamTask(composeProcess!!, project.logger, "docker", dockerLogFile))
     }
 
     private fun waitForServices(ports: List<Int>) {
         val timeout = Duration.ofMinutes(5)
+        project.logger.lifecycle("[e2e] Waiting for docker services on ports: ${ports.joinToString(", ")}")
         ports.forEach { port ->
             waitForPort("localhost", port, timeout)
         }
@@ -253,12 +283,14 @@ abstract class E2eApiTest : Test() {
         applicationLogs = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "e2e-app-logs").apply { isDaemon = true }
         }
-        applicationOutput = applicationLogs?.submit(logStreamTask(applicationProcess!!, project.logger, "app"))
+        val appLogFile = logsDir().resolve("application.log")
+        applicationOutput = applicationLogs?.submit(logStreamTask(applicationProcess!!, project.logger, "app", appLogFile))
     }
 
     private fun waitForHealth() {
         val healthUrl = URL(applicationHealthUrl.get())
         val timeout = System.nanoTime() + Duration.ofMinutes(5).toNanos()
+        project.logger.lifecycle("[e2e] Waiting for application health at $healthUrl")
         while (System.nanoTime() < timeout) {
             try {
                 val connection = healthUrl.openConnection() as HttpURLConnection
@@ -285,26 +317,36 @@ abstract class E2eApiTest : Test() {
     }
 
     private fun stopApplication() {
+        project.logger.lifecycle("[e2e] Stopping application process")
         applicationOutput?.cancel(true)
         applicationLogs?.shutdownNow()
         applicationProcess?.let { process ->
-            project.logger.lifecycle("[e2e] Stopping application process")
             process.destroy()
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
+            }
+            if (process.isAlive) {
+                project.logger.lifecycle("[e2e] Application process terminated forcefully")
+            } else {
+                project.logger.lifecycle("[e2e] Application process exited with code ${process.exitValue()}")
             }
         }
         applicationProcess = null
     }
 
     private fun stopDocker() {
+        project.logger.lifecycle("[e2e] Stopping docker compose process")
         composeOutput?.cancel(true)
         composeLogs?.shutdownNow()
         composeProcess?.let { process ->
-            project.logger.lifecycle("[e2e] Stopping docker compose process")
             process.destroy()
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
+            }
+            if (process.isAlive) {
+                project.logger.lifecycle("[e2e] Docker compose process terminated forcefully")
+            } else {
+                project.logger.lifecycle("[e2e] Docker compose process exited with code ${process.exitValue()}")
             }
         }
         composeProcess = null
@@ -316,11 +358,20 @@ abstract class E2eApiTest : Test() {
     private fun runDockerComposeDown(dockerDir: File, composeFile: File) {
         val command = resolveDockerComposeCommand(composeFile, down = true)
         project.logger.lifecycle("[e2e] Running docker compose down: ${command.joinToString(" ")}")
-        ProcessBuilder(command)
+        val downProcess = ProcessBuilder(command)
             .directory(dockerDir)
-            .inheritIO()
+            .redirectErrorStream(true)
             .start()
-            .waitFor()
+        val downLogFile = currentLogsDirectory?.resolve("docker-compose-down.log")
+        downLogFile?.parentFile?.mkdirs()
+        downProcess.inputStream.bufferedReader().useLines { lines ->
+            lines.forEach { line ->
+                project.logger.lifecycle("[docker-down] $line")
+                downLogFile?.appendText(line + System.lineSeparator())
+            }
+        }
+        val exitCode = downProcess.waitFor()
+        project.logger.lifecycle("[e2e] Docker compose down completed with exit code $exitCode")
     }
 
     private fun resolveDockerComposeCommand(file: File, down: Boolean = false): List<String> {
@@ -352,10 +403,15 @@ abstract class E2eApiTest : Test() {
         }
     }
 
-    private fun logStreamTask(process: Process, logger: Logger, prefix: String): Callable<Unit> = Callable {
-        process.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach { line ->
-                logger.lifecycle("[$prefix] $line")
+    private fun logStreamTask(process: Process, logger: Logger, prefix: String, logFile: File): Callable<Unit> = Callable {
+        logFile.parentFile.mkdirs()
+        logFile.outputStream().bufferedWriter().use { writer ->
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    logger.lifecycle("[$prefix] $line")
+                    writer.appendLine(line)
+                    writer.flush()
+                }
             }
         }
     }
