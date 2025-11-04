@@ -14,7 +14,6 @@ import kz.juzym.config.Environment
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
-import kz.juzym.registration.RegistrationService
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserService
 import kz.juzym.user.avatar.AvatarService
@@ -65,7 +64,6 @@ class Application(
             jwtService = koin.get(),
             graphService = koin.get(),
             auditEventStore = koin.get(),
-            registrationService = koin.get(),
             avatarService = koin.get(),
             authService = koin.get(),
             passwordHasher = koin.get(),
@@ -93,7 +91,6 @@ data class ApplicationContext(
     val jwtService: JwtService,
     val graphService: GraphService,
     val auditEventStore: AuditEventStore,
-    val registrationService: RegistrationService,
     val avatarService: AvatarService,
     val authService: AuthService,
     val passwordHasher: PasswordHasher,

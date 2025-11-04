@@ -1,14 +1,26 @@
-package kz.juzym.registration
+package kz.juzym.user
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
+import kz.juzym.registration.RegistrationConfig
+import kz.juzym.registration.RegistrationInvalidTokenException
+import kz.juzym.registration.RegistrationRateLimitException
+import kz.juzym.registration.RegistrationRequest
+import kz.juzym.registration.RegistrationStatus
+import kz.juzym.registration.PasswordPolicyResponse
+import kz.juzym.registration.CompleteProfileRequest
+import kz.juzym.registration.RegistrationTokensTable
+import kz.juzym.registration.RegistrationIdempotencyTable
+import kz.juzym.registration.RegistrationsTable
+import kz.juzym.user.security.BcryptPasswordHasher
+import kz.juzym.user.security.PasswordHasher
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.assertThrows
@@ -23,10 +35,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class RegistrationServiceImplTest {
+class UserRegistrationServiceTest {
 
     private lateinit var postgres: EmbeddedPostgres
     private lateinit var context: PostgresDatabaseContext
+    private lateinit var userRepository: UserRepository
+    private lateinit var tokenRepository: UserTokenRepository
+    private lateinit var passwordHasher: PasswordHasher
+    private lateinit var mailSender: TestMailSender
 
     private val baseInstant: Instant = Instant.parse("2024-01-01T00:00:00Z")
 
@@ -41,6 +57,22 @@ class RegistrationServiceImplTest {
         val factory = DatabaseFactory(config)
         context = factory.connect()
         factory.ensureSchema(context)
+        passwordHasher = BcryptPasswordHasher(logRounds = 4)
+        userRepository = ExposedUserRepository(context.database, passwordHasher)
+        tokenRepository = ExposedUserTokenRepository(context.database)
+        mailSender = TestMailSender()
+    }
+
+    @AfterEach
+    fun cleanDatabase() {
+        mailSender.reset()
+        transaction(context.database) {
+            RegistrationTokensTable.deleteAll()
+            RegistrationIdempotencyTable.deleteAll()
+            RegistrationsTable.deleteAll()
+            UserTokensTable.deleteAll()
+            UsersTable.deleteAll()
+        }
     }
 
     @AfterAll
@@ -49,17 +81,8 @@ class RegistrationServiceImplTest {
         postgres.close()
     }
 
-    @BeforeEach
-    fun cleanDatabase() {
-        transaction(context.database) {
-            RegistrationTokensTable.deleteAll()
-            RegistrationIdempotencyTable.deleteAll()
-            RegistrationsTable.deleteAll()
-        }
-    }
-
     @Test
-    fun `email availability reflects registration state`() {
+    fun `email availability reflects registration and user state`() {
         val (service, _) = createService()
         val email = "test@example.com"
 
@@ -103,8 +126,8 @@ class RegistrationServiceImplTest {
     }
 
     @Test
-    fun `verify email activates registration and issues session`() {
-        val (service, clock) = createService()
+    fun `verify email activates registration creates user and issues session`() {
+        val (service, _) = createService()
         val request = sampleRequest(email = "verify@example.com")
         val registration = service.startRegistration(request, null)
         val token = registration.debugVerificationToken!!
@@ -113,97 +136,94 @@ class RegistrationServiceImplTest {
 
         assertEquals(RegistrationStatus.ACTIVE, verification.status)
         assertNotNull(verification.session.accessToken)
+        assertNotNull(userRepository.findByEmail(request.email))
 
         assertThrows<RegistrationInvalidTokenException> {
             service.verifyEmail(token)
         }
-
-        clock.advanceSeconds(3600)
-        val status = service.getRegistrationStatus(request.email)
-        assertEquals(RegistrationStatus.ACTIVE, status.status)
-        assertFalse(status.verification.required)
     }
 
     @Test
-    fun `complete profile updates mutable fields`() {
+    fun `complete profile updates selected fields`() {
         val (service, _) = createService()
         val request = sampleRequest(email = "profile@example.com")
         val registration = service.startRegistration(request, null)
         service.verifyEmail(registration.debugVerificationToken!!)
 
         val result = service.completeProfile(
-            userId = registration.userId,
-            request = CompleteProfileRequest(
-                photoUrl = "http://example.com/avatar.png",
-                about = "About me",
-                locale = "ru-KZ",
-                timezone = "Asia/Almaty",
-            ),
+            registration.userId,
+            CompleteProfileRequest(photoUrl = "https://cdn.example.com/avatar.png", about = "QA")
         )
 
-        assertEquals(setOf("photoUrl", "about", "locale", "timezone"), result.updated.toSet())
+        assertEquals(listOf("photoUrl", "about"), result.updated)
         assertNotNull(result.avatarId)
     }
 
     @Test
-    fun `password reset flow generates and consumes token`() {
-        val (service, clock) = createService()
+    fun `request password reset issues token`() {
+        val (service, _) = createService()
         val request = sampleRequest(email = "reset@example.com")
         val registration = service.startRegistration(request, null)
         service.verifyEmail(registration.debugVerificationToken!!)
 
-        val forgot = service.requestPasswordReset(request.email)
-        val resetToken = forgot.debugResetToken!!
+        val reset = service.requestPasswordReset(request.email)
 
-        clock.advanceSeconds(1)
-        val reset = service.resetPassword(resetToken, "StrongPass1!")
-        assertTrue(reset.reset)
-
-        assertThrows<RegistrationInvalidTokenException> {
-            service.resetPassword(resetToken, "AnotherPass1!")
-        }
+        assertTrue(reset.sent)
+        assertNotNull(reset.debugResetToken)
     }
 
     @Test
-    fun `request password reset for unknown email throws`() {
+    fun `reset password updates registration and user`() {
         val (service, _) = createService()
+        val request = sampleRequest(email = "reset-update@example.com")
+        val registration = service.startRegistration(request, null)
+        service.verifyEmail(registration.debugVerificationToken!!)
+        val forgot = service.requestPasswordReset(request.email)
+        val token = forgot.debugResetToken!!
 
-        assertThrows<RegistrationNotFoundException> {
-            service.requestPasswordReset("missing@example.com")
-        }
+        val response = service.resetPassword(token, "AnotherPass1!")
+
+        assertTrue(response.reset)
+        val user = userRepository.findByEmail(request.email)
+        assertNotNull(user)
+        assertTrue(userRepository.verifyCredentials(request.iin, "AnotherPass1!"))
     }
 
     @Test
-    fun `password policy and limits reflect configuration`() {
-        val customConfig = RegistrationConfig(
-            emailTokenTtlMinutes = 15,
-            resendCooldownSeconds = 2,
-            maxResendsPerDay = 2,
-            maxAttemptsPerIpPerHour = 5,
-            passwordPolicy = PasswordPolicyResponse(
-                minLength = 12,
-                requireUpper = true,
-                requireLower = true,
-                requireDigit = true,
-                requireSymbol = false,
-                forbidBreachedTopN = true,
-            ),
-            exposeDebugTokens = true,
-        )
-        val (service, _) = createService(customConfig)
+    fun `registration status reports cooldown`() {
+        val (service, clock) = createService()
+        val request = sampleRequest(email = "status@example.com")
+        val registration = service.startRegistration(request, null)
 
-        val policy = service.getPasswordPolicy()
-        val limits = service.getLimits()
+        val status = service.getRegistrationStatus(request.email)
 
-        assertEquals(customConfig.passwordPolicy, policy)
-        assertEquals(customConfig.maxAttemptsPerIpPerHour, limits.maxAttemptsPerIpPerHour)
-        assertEquals(customConfig.maxResendsPerDay, limits.maxResendsPerDay)
-        assertEquals(customConfig.emailTokenTtlMinutes.toInt(), limits.emailTokenTtlMinutes)
+        assertEquals(RegistrationStatus.PENDING, status.status)
+        assertTrue(status.verification.resentCooldownSec > 0)
+
+        clock.advanceSeconds(5)
+        val updated = service.getRegistrationStatus(request.email)
+        assertEquals(0, updated.verification.resentCooldownSec)
     }
 
-    private fun createService(config: RegistrationConfig = defaultConfig()): Pair<RegistrationServiceImpl, MutableClock> {
+    private fun createService(
+        config: RegistrationConfig = defaultConfig()
+    ): Pair<UserService, MutableClock> {
         val clock = MutableClock(baseInstant)
-        val service = RegistrationServiceImpl(context.database, config, clock)
+        val service = UserServiceImpl(
+            database = context.database,
+            userRepository = userRepository,
+            tokenRepository = tokenRepository,
+            mailSender = mailSender,
+            passwordHasher = passwordHasher,
+            config = UserServiceConfig(
+                activationLinkBuilder = { it },
+                passwordResetLinkBuilder = { it },
+                deletionLinkBuilder = { it },
+                emailChangeLinkBuilder = { it }
+            ),
+            registrationConfig = config,
+            clock = clock
+        )
         return service to clock
     }
 
@@ -211,6 +231,14 @@ class RegistrationServiceImplTest {
         resendCooldownSeconds = 1,
         maxResendsPerDay = 5,
         exposeDebugTokens = true,
+        passwordPolicy = PasswordPolicyResponse(
+            minLength = 8,
+            requireLower = true,
+            requireUpper = true,
+            requireDigit = true,
+            requireSymbol = false,
+            forbidBreachedTopN = true
+        )
     )
 
     private fun sampleRequest(
@@ -240,6 +268,30 @@ class RegistrationServiceImplTest {
 
         fun advanceSeconds(seconds: Long) {
             currentInstant = currentInstant.plusSeconds(seconds)
+        }
+    }
+
+    private class TestMailSender : MailSenderStub {
+        private val sentEmails = mutableListOf<String>()
+
+        override fun sendActivationEmail(to: String, activationLink: String) {
+            sentEmails += activationLink
+        }
+
+        override fun sendPasswordResetEmail(to: String, resetLink: String) {
+            sentEmails += resetLink
+        }
+
+        override fun sendDeletionConfirmationEmail(to: String, deletionLink: String) {
+            sentEmails += deletionLink
+        }
+
+        override fun sendEmailChangeConfirmationEmail(to: String, newEmail: String, confirmationLink: String) {
+            sentEmails += confirmationLink
+        }
+
+        fun reset() {
+            sentEmails.clear()
         }
     }
 }

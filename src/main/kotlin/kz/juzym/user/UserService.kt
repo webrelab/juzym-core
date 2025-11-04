@@ -1,33 +1,50 @@
 package kz.juzym.user
 
 import kz.juzym.audit.AuditAction
+import kz.juzym.registration.CompleteProfileRequest
+import kz.juzym.registration.CompleteProfileResponse
+import kz.juzym.registration.EmailAvailabilityResponse
+import kz.juzym.registration.PasswordForgotResponse
+import kz.juzym.registration.PasswordResetResponse
+import kz.juzym.registration.RegistrationLimitsResponse
+import kz.juzym.registration.RegistrationRequest
+import kz.juzym.registration.RegistrationResponse
+import kz.juzym.registration.RegistrationStatusResponse
+import kz.juzym.registration.ResendEmailResponse
+import kz.juzym.registration.VerificationResponse
+import kz.juzym.registration.PasswordPolicyResponse
 import java.util.UUID
 
 interface UserService {
+    @AuditAction("registration.checkEmailAvailability")
+    fun checkEmailAvailability(email: String): EmailAvailabilityResponse
 
-    @AuditAction("user.registerOrAuthenticate")
-    fun registerOrAuthenticate(iin: String, email: String, password: String): RegistrationResult
+    @AuditAction("registration.start")
+    fun startRegistration(request: RegistrationRequest, idempotencyKey: String?): RegistrationResponse
 
-    @AuditAction("user.resendActivationEmail")
-    fun resendActivationEmail(iin: String): ResendActivationResult
+    @AuditAction("registration.resendEmail")
+    fun resendActivationEmail(iin: String, email: String): ResendEmailResponse
 
-    @AuditAction("user.activateAccount")
-    fun activateAccount(token: String): ActivationResult
+    @AuditAction("registration.verifyEmail")
+    fun verifyEmail(token: String): VerificationResponse
 
-    @AuditAction("user.blockUser")
-    fun blockUser(userId: UUID)
+    @AuditAction("registration.completeProfile")
+    fun completeProfile(userId: UUID, request: CompleteProfileRequest): CompleteProfileResponse
 
-    @AuditAction("user.requestPasswordReset")
-    fun requestPasswordReset(iin: String): PasswordResetRequestResult
+    @AuditAction("registration.getPasswordPolicy")
+    fun getPasswordPolicy(): PasswordPolicyResponse
 
-    @AuditAction("user.resetPassword")
-    fun resetPassword(token: String, newPassword: String): PasswordResetResult
+    @AuditAction("registration.getLimits")
+    fun getLimits(): RegistrationLimitsResponse
 
-    @AuditAction("user.requestDeletion")
-    fun requestDeletion(iin: String): DeletionRequestResult
+    @AuditAction("registration.requestPasswordReset")
+    fun requestPasswordReset(email: String): PasswordForgotResponse
 
-    @AuditAction("user.confirmDeletion")
-    fun confirmDeletion(token: String): DeletionConfirmationResult
+    @AuditAction("registration.resetPassword")
+    fun resetPassword(token: String, newPassword: String): PasswordResetResponse
+
+    @AuditAction("registration.getStatus")
+    fun getRegistrationStatus(email: String): RegistrationStatusResponse
 
     @AuditAction("user.requestEmailChange")
     fun requestEmailChange(userId: UUID, newEmail: String): EmailChangeRequestResult
@@ -42,47 +59,6 @@ data class UserServiceConfig(
     val deletionLinkBuilder: (String) -> String,
     val emailChangeLinkBuilder: (String) -> String
 )
-
-sealed interface RegistrationResult {
-    data class Pending(val user: User, val activationLink: String) : RegistrationResult
-    data class PendingExisting(val user: User) : RegistrationResult
-    data class Authenticated(val user: User, val jwt: String) : RegistrationResult
-    data class InvalidCredentials(val user: User) : RegistrationResult
-    data class Blocked(val user: User) : RegistrationResult
-}
-
-sealed interface ResendActivationResult {
-    data class Sent(val activationLink: String) : ResendActivationResult
-    data class InvalidStatus(val status: UserStatus) : ResendActivationResult
-    data object NotFound : ResendActivationResult
-}
-
-sealed interface ActivationResult {
-    data class Activated(val user: User, val greeting: String) : ActivationResult
-    data object InvalidLink : ActivationResult
-}
-
-sealed interface PasswordResetRequestResult {
-    data class Sent(val link: String) : PasswordResetRequestResult
-    data class InvalidStatus(val status: UserStatus) : PasswordResetRequestResult
-    data object NotFound : PasswordResetRequestResult
-}
-
-sealed interface PasswordResetResult {
-    data class Success(val jwt: String) : PasswordResetResult
-    data object InvalidToken : PasswordResetResult
-}
-
-sealed interface DeletionRequestResult {
-    data class Sent(val link: String) : DeletionRequestResult
-    data class InvalidStatus(val status: UserStatus) : DeletionRequestResult
-    data object NotFound : DeletionRequestResult
-}
-
-sealed interface DeletionConfirmationResult {
-    data object Deleted : DeletionConfirmationResult
-    data object InvalidToken : DeletionConfirmationResult
-}
 
 sealed interface EmailChangeRequestResult {
     data class Sent(val link: String) : EmailChangeRequestResult

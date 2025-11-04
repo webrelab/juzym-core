@@ -23,8 +23,6 @@ import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
 import kz.juzym.registration.RegistrationConfig
-import kz.juzym.registration.RegistrationService
-import kz.juzym.registration.RegistrationServiceImpl
 import kz.juzym.user.ExposedUserRepository
 import kz.juzym.user.ExposedUserTokenRepository
 import kz.juzym.user.MailSenderStub
@@ -134,12 +132,13 @@ val serviceModule = module {
     }
     single {
         UserServiceImpl(
+            database = get<PostgresDatabaseContext>().database,
             userRepository = get(),
             tokenRepository = get(),
             mailSender = get(),
             passwordHasher = get(),
-            jwtService = get(),
-            config = get()
+            config = get(),
+            registrationConfig = get()
         )
     }
     single<UserService> {
@@ -172,10 +171,5 @@ val serviceModule = module {
             resendCooldownSeconds = if (appConfig.environment == Environment.TEST) 1 else defaults.resendCooldownSeconds,
             exposeDebugTokens = appConfig.environment == Environment.TEST
         )
-    }
-    single { RegistrationServiceImpl(get<PostgresDatabaseContext>().database, get()) }
-    single<RegistrationService> {
-        val implementation: RegistrationService = get<RegistrationServiceImpl>()
-        auditProxy(implementation, get())
     }
 }

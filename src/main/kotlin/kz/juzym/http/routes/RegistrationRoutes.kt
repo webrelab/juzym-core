@@ -20,7 +20,7 @@ import kz.juzym.registration.RegistrationInvalidTokenException
 import kz.juzym.registration.RegistrationNotFoundException
 import kz.juzym.registration.RegistrationRateLimitException
 import kz.juzym.registration.RegistrationRequest
-import kz.juzym.registration.RegistrationService
+import kz.juzym.user.UserService
 import kz.juzym.registration.RegistrationUnauthorizedException
 import kz.juzym.registration.RegistrationValidationException
 import kz.juzym.registration.ResendEmailRequest
@@ -28,7 +28,7 @@ import kz.juzym.registration.VerificationRequest
 import io.ktor.util.pipeline.PipelineContext
 import java.util.UUID
 
-fun Route.registrationRoutes(service: RegistrationService) {
+fun Route.registrationRoutes(service: UserService) {
     route("/auth") {
         route("/registration") {
             get("/email-availability") {
