@@ -36,9 +36,10 @@ class RegistrationApiTest {
             .statusCode(200)
             .body("minLength", greaterThanOrEqualTo(8))
             .body("requireLower", equalTo(true))
-            .body("requireUpper", equalTo(true))
+            .body("requireUpper", equalTo(false))
             .body("requireDigit", equalTo(true))
-            .body("requireSymbol", equalTo(true))
+            .body("requireSymbol", equalTo(false))
+            .body("forbidBreachedTopN", equalTo(true))
     }
 
     @Test
