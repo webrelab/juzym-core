@@ -1,18 +1,6 @@
 package kz.juzym.user
 
 import kz.juzym.audit.AuditAction
-import kz.juzym.registration.CompleteProfileRequest
-import kz.juzym.registration.CompleteProfileResponse
-import kz.juzym.registration.EmailAvailabilityResponse
-import kz.juzym.registration.PasswordForgotResponse
-import kz.juzym.registration.PasswordResetResponse
-import kz.juzym.registration.RegistrationLimitsResponse
-import kz.juzym.registration.RegistrationRequest
-import kz.juzym.registration.RegistrationResponse
-import kz.juzym.registration.RegistrationStatusResponse
-import kz.juzym.registration.ResendEmailResponse
-import kz.juzym.registration.VerificationResponse
-import kz.juzym.registration.PasswordPolicyResponse
 import java.util.UUID
 
 interface UserService {

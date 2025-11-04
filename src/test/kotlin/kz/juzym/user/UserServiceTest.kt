@@ -4,10 +4,6 @@ import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
-import kz.juzym.registration.RegistrationConfig
-import kz.juzym.registration.RegistrationIdempotencyTable
-import kz.juzym.registration.RegistrationTokensTable
-import kz.juzym.registration.RegistrationsTable
 import kz.juzym.user.security.BcryptPasswordHasher
 import kz.juzym.user.security.PasswordHasher
 import org.jetbrains.exposed.sql.deleteAll
@@ -63,7 +59,7 @@ class UserServiceTest {
                 emailChangeLinkBuilder = { token -> "https://app.test/email/$token" }
             ),
             registrationConfig = RegistrationConfig(exposeDebugTokens = true),
-            clock = FixedClock()
+            clock = FixedClock(),
         )
     }
 
@@ -72,10 +68,8 @@ class UserServiceTest {
         mailSender.reset()
         transaction(context.database) {
             UserTokensTable.deleteAll()
+            UserRegistrationIdempotencyTable.deleteAll()
             UsersTable.deleteAll()
-            RegistrationTokensTable.deleteAll()
-            RegistrationsTable.deleteAll()
-            RegistrationIdempotencyTable.deleteAll()
         }
     }
 

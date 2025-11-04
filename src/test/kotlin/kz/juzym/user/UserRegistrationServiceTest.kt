@@ -4,16 +4,6 @@ import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
-import kz.juzym.registration.RegistrationConfig
-import kz.juzym.registration.RegistrationInvalidTokenException
-import kz.juzym.registration.RegistrationRateLimitException
-import kz.juzym.registration.RegistrationRequest
-import kz.juzym.registration.RegistrationStatus
-import kz.juzym.registration.PasswordPolicyResponse
-import kz.juzym.registration.CompleteProfileRequest
-import kz.juzym.registration.RegistrationTokensTable
-import kz.juzym.registration.RegistrationIdempotencyTable
-import kz.juzym.registration.RegistrationsTable
 import kz.juzym.user.security.BcryptPasswordHasher
 import kz.juzym.user.security.PasswordHasher
 import org.jetbrains.exposed.sql.deleteAll
@@ -67,9 +57,7 @@ class UserRegistrationServiceTest {
     fun cleanDatabase() {
         mailSender.reset()
         transaction(context.database) {
-            RegistrationTokensTable.deleteAll()
-            RegistrationIdempotencyTable.deleteAll()
-            RegistrationsTable.deleteAll()
+            UserRegistrationIdempotencyTable.deleteAll()
             UserTokensTable.deleteAll()
             UsersTable.deleteAll()
         }
@@ -193,7 +181,7 @@ class UserRegistrationServiceTest {
     fun `registration status reports cooldown`() {
         val (service, clock) = createService()
         val request = sampleRequest(email = "status@example.com")
-        val registration = service.startRegistration(request, null)
+        service.startRegistration(request, null)
 
         val status = service.getRegistrationStatus(request.email)
 

@@ -22,15 +22,15 @@ import kz.juzym.config.UserLinksConfig
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
-import kz.juzym.registration.RegistrationConfig
 import kz.juzym.user.ExposedUserRepository
 import kz.juzym.user.ExposedUserTokenRepository
 import kz.juzym.user.MailSenderStub
+import kz.juzym.user.RegistrationConfig
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserService
 import kz.juzym.user.UserServiceConfig
-import kz.juzym.user.UserTokenRepository
 import kz.juzym.user.UserServiceImpl
+import kz.juzym.user.UserTokenRepository
 import kz.juzym.user.security.BcryptPasswordHasher
 import kz.juzym.user.security.PasswordHasher
 import kz.juzym.user.security.jwt.JwtConfig

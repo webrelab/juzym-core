@@ -2,7 +2,7 @@ package kz.juzym.api
 
 import io.restassured.RestAssured
 import io.restassured.http.ContentType
-import kz.juzym.registration.RegistrationStatus
+import kz.juzym.user.RegistrationStatus
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.greaterThanOrEqualTo
 import org.hamcrest.Matchers.hasItems
