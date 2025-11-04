@@ -19,10 +19,6 @@ import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.config.RedisConfig
 import kz.juzym.config.UserLinksConfig
-import kz.juzym.dev.DebugMailStore
-import kz.juzym.dev.InMemoryDebugMailStore
-import kz.juzym.dev.NoopDebugMailStore
-import kz.juzym.dev.RecordingMailSender
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
@@ -111,22 +107,7 @@ val serviceModule = module {
         )
     }
     single<PasswordHasher> { BcryptPasswordHasher() }
-    single<DebugMailStore> {
-        val appConfig = get<ApplicationConfig>()
-        return@single if (appConfig.environment == Environment.DEV || appConfig.environment == Environment.TEST) {
-            InMemoryDebugMailStore()
-        } else {
-            NoopDebugMailStore()
-        }
-    }
-    single<MailSenderStub> {
-        val debugStore = get<DebugMailStore>()
-        if (debugStore !is NoopDebugMailStore) {
-            RecordingMailSender(store = debugStore, delegate = kz.juzym.user.ConsoleMailSenderStub())
-        } else {
-            kz.juzym.user.ConsoleMailSenderStub()
-        }
-    }
+    single<MailSenderStub> { kz.juzym.user.ConsoleMailSenderStub() }
     single {
         val jwtProps = get<JwtProperties>()
         JwtService(

@@ -12,7 +12,6 @@ import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.DatabaseFactory
 import kz.juzym.config.Environment
 import kz.juzym.config.PostgresDatabaseContext
-import kz.juzym.dev.DebugMailStore
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.registration.RegistrationService
@@ -69,7 +68,6 @@ class Application(
             registrationService = koin.get(),
             avatarService = koin.get(),
             authService = koin.get(),
-            debugMailStore = koin.get(),
             passwordHasher = koin.get(),
             koinApplication = koinApplication
         )
@@ -98,7 +96,6 @@ data class ApplicationContext(
     val registrationService: RegistrationService,
     val avatarService: AvatarService,
     val authService: AuthService,
-    val debugMailStore: DebugMailStore,
     val passwordHasher: PasswordHasher,
     private val koinApplication: KoinApplication
 ) {

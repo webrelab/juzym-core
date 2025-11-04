@@ -6,7 +6,6 @@ import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Instant
@@ -25,19 +24,9 @@ class AuthApiTest {
         RestAssured.enableLoggingOfRequestAndResponseIfValidationFails()
     }
 
-    @BeforeEach
-    fun cleanCapturedMail() {
-        RestAssured
-            .given()
-            .`when`()
-            .delete("/dev/mail")
-            .then()
-            .statusCode(204)
-    }
-
     @Test
     fun `login refresh logout flow`() {
-        val testUser = createTestUser()
+        val testUser = createActiveUser()
 
         val loginResponse = RestAssured
             .given()
@@ -129,15 +118,15 @@ class AuthApiTest {
     }
 
     @Test
-    fun `login fails for invalid credentials and blocked user`() {
-        val testUser = createTestUser()
+    fun `login fails for invalid credentials and pending registration`() {
+        val activeUser = createActiveUser()
 
         RestAssured
             .given()
             .contentType(ContentType.JSON)
             .body(
                 mapOf(
-                    "email" to testUser.email,
+                    "email" to activeUser.email,
                     "password" to "wrong",
                     "device" to mapOf("deviceId" to UUID.randomUUID().toString(), "platform" to "web")
                 )
@@ -148,28 +137,28 @@ class AuthApiTest {
             .statusCode(401)
             .body("error.code", equalTo("invalid_credentials"))
 
-        val blockedUser = createTestUser(status = "BLOCKED")
+        val pendingRegistration = registerUser()
 
         RestAssured
             .given()
             .contentType(ContentType.JSON)
             .body(
                 mapOf(
-                    "email" to blockedUser.email,
-                    "password" to blockedUser.password,
+                    "email" to pendingRegistration.email,
+                    "password" to pendingRegistration.password,
                     "device" to mapOf("deviceId" to UUID.randomUUID().toString(), "platform" to "web")
                 )
             )
             .`when`()
             .post("/auth/login")
             .then()
-            .statusCode(403)
-            .body("error.code", equalTo("account_blocked"))
+            .statusCode(401)
+            .body("error.code", equalTo("invalid_credentials"))
     }
 
     @Test
     fun `password change scenarios`() {
-        val user = createTestUser()
+        val user = createActiveUser()
         val tokens = login(user)
         val accessToken = tokens.accessToken
         val refreshToken = tokens.refreshToken
@@ -247,20 +236,10 @@ class AuthApiTest {
 
     @Test
     fun `password reset flow via registration`() {
-        val registration = startRegistration()
-        val activationMail = fetchLatestMail("activation", registration.email)
-        val activationToken = activationMail.token
+        val registration = registerUser()
+        verifyRegistration(registration.verificationToken)
 
-        RestAssured
-            .given()
-            .contentType(ContentType.JSON)
-            .body(mapOf("token" to activationToken))
-            .`when`()
-            .post("/auth/registration/verify-email")
-            .then()
-            .statusCode(200)
-
-        RestAssured
+        val forgotJson = RestAssured
             .given()
             .contentType(ContentType.JSON)
             .body(mapOf("email" to registration.email))
@@ -269,9 +248,11 @@ class AuthApiTest {
             .then()
             .statusCode(200)
             .body("sent", equalTo(true))
+            .extract()
+            .jsonPath()
 
-        val resetMail = fetchLatestMail("password_reset", registration.email)
-        val resetToken = resetMail.token
+        val resetToken = forgotJson.getString("debugResetToken")
+        require(!resetToken.isNullOrBlank()) { "Expected password reset token in test environment" }
 
         RestAssured
             .given()
@@ -296,12 +277,12 @@ class AuthApiTest {
 
     @Test
     fun `email change flow`() {
-        val user = createTestUser()
+        val user = createActiveUser()
         val tokens = login(user)
 
         val newEmail = "updated-${UUID.randomUUID()}@example.com"
 
-        RestAssured
+        val requestResponse = RestAssured
             .given()
             .header("Authorization", "Bearer ${tokens.accessToken}")
             .contentType(ContentType.JSON)
@@ -311,13 +292,17 @@ class AuthApiTest {
             .then()
             .statusCode(200)
             .body("sent", equalTo(true))
+            .extract()
+            .jsonPath()
 
-        val mail = fetchLatestMail("email_change", newEmail)
+        val debugLink = requestResponse.getString("debugLink")
+        require(!debugLink.isNullOrBlank()) { "Expected debug link in test environment" }
+        val token = debugLink.substringAfterLast('/')
 
         RestAssured
             .given()
             .contentType(ContentType.JSON)
-            .body(mapOf("token" to mail.token))
+            .body(mapOf("token" to token))
             .`when`()
             .post("/auth/email/change/confirm")
             .then()
@@ -365,31 +350,16 @@ class AuthApiTest {
             .body("error.code", equalTo("invalid_token"))
     }
 
-    private fun createTestUser(status: String = "ACTIVE"): TestUser {
-        val email = "user-${UUID.randomUUID()}@example.com"
-        val iin = generateIin()
-        val password = "Password1!"
-        val deviceId = "dev-${UUID.randomUUID()}"
-
-        val response = RestAssured
-            .given()
-            .contentType(ContentType.JSON)
-            .body(
-                mapOf(
-                    "email" to email,
-                    "iin" to iin,
-                    "password" to password,
-                    "status" to status
-                )
-            )
-            .`when`()
-            .post("/dev/users")
-            .then()
-            .statusCode(201)
-            .extract()
-
-        val userId = response.jsonPath().getString("userId")
-        return TestUser(userId, email, iin, password, deviceId)
+    private fun createActiveUser(): TestUser {
+        val registration = registerUser()
+        val verification = verifyRegistration(registration.verificationToken)
+        return TestUser(
+            userId = verification.userId,
+            email = registration.email,
+            iin = registration.iin,
+            password = registration.password,
+            deviceId = "dev-${UUID.randomUUID()}"
+        )
     }
 
     private fun login(user: TestUser): Tokens {
@@ -418,14 +388,15 @@ class AuthApiTest {
         )
     }
 
-    private fun startRegistration(): RegistrationContext {
-        val email = "reg-${UUID.randomUUID()}@example.com"
+    private fun registerUser(): RegistrationContext {
+        val email = "user-${UUID.randomUUID()}@example.com"
         val iin = generateIin()
         val password = "Password1!"
 
-        RestAssured
+        val response = RestAssured
             .given()
             .contentType(ContentType.JSON)
+            .header("Idempotency-Key", UUID.randomUUID().toString())
             .body(
                 mapOf(
                     "iin" to iin,
@@ -440,24 +411,40 @@ class AuthApiTest {
             .post("/auth/registration")
             .then()
             .statusCode(201)
+            .extract()
+            .jsonPath()
 
-        return RegistrationContext(email, iin, password)
+        val userId = response.getString("userId")
+        val token = response.getString("debugVerificationToken")
+        require(!token.isNullOrBlank()) { "Expected verification token in test environment" }
+
+        return RegistrationContext(
+            userId = userId,
+            email = email,
+            iin = iin,
+            password = password,
+            verificationToken = token
+        )
     }
 
-    private fun fetchLatestMail(type: String, to: String): CapturedMailInfo {
+    private fun verifyRegistration(token: String): VerificationResult {
         val response = RestAssured
             .given()
-            .queryParam("type", type)
-            .queryParam("to", to)
+            .contentType(ContentType.JSON)
+            .body(mapOf("token" to token))
             .`when`()
-            .get("/dev/mail/latest")
+            .post("/auth/registration/verify-email")
             .then()
             .statusCode(200)
             .extract()
+            .jsonPath()
 
-        val link = response.jsonPath().getString("link")
-        val token = link.substringAfterLast('/')
-        return CapturedMailInfo(link, token)
+        return VerificationResult(
+            userId = response.getString("userId"),
+            accessToken = response.getString("session.accessToken"),
+            refreshToken = response.getString("session.refreshToken"),
+            avatarId = response.getString("avatarId")
+        )
     }
 
     private fun generateIin(): String {
@@ -481,7 +468,18 @@ class AuthApiTest {
 
     private data class Tokens(val accessToken: String, val refreshToken: String)
 
-    private data class RegistrationContext(val email: String, val iin: String, val password: String)
+    private data class RegistrationContext(
+        val userId: String,
+        val email: String,
+        val iin: String,
+        val password: String,
+        val verificationToken: String
+    )
 
-    private data class CapturedMailInfo(val link: String, val token: String)
+    private data class VerificationResult(
+        val userId: String,
+        val accessToken: String,
+        val refreshToken: String,
+        val avatarId: String
+    )
 }
