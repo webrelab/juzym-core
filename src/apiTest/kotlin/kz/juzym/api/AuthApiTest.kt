@@ -77,7 +77,9 @@ class AuthApiTest {
 
         val refreshResponse = RestAssured
             .given()
+            .contentType(ContentType.JSON)
             .cookie("refreshToken", refreshToken)
+            .body(mapOf("deviceId" to testUser.deviceId))
             .`when`()
             .post("/auth/refresh")
             .then()
