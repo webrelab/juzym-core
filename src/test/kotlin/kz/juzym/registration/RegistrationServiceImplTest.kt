@@ -1,20 +1,62 @@
 package kz.juzym.registration
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
+import kz.juzym.config.DatabaseFactory
+import kz.juzym.config.PostgresConfig
+import kz.juzym.config.PostgresDatabaseContext
+import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.assertThrows
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
-class InMemoryRegistrationServiceTest {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class RegistrationServiceImplTest {
+
+    private lateinit var postgres: EmbeddedPostgres
+    private lateinit var context: PostgresDatabaseContext
 
     private val baseInstant: Instant = Instant.parse("2024-01-01T00:00:00Z")
+
+    @BeforeAll
+    fun setup() {
+        postgres = EmbeddedPostgres.builder().start()
+        val config = PostgresConfig(
+            jdbcUrl = postgres.getJdbcUrl("postgres", "postgres"),
+            user = "postgres",
+            password = "",
+        )
+        val factory = DatabaseFactory(config)
+        context = factory.connect()
+        factory.ensureSchema(context)
+    }
+
+    @AfterAll
+    fun tearDown() {
+        context.close()
+        postgres.close()
+    }
+
+    @BeforeEach
+    fun cleanDatabase() {
+        transaction(context.database) {
+            RegistrationTokensTable.deleteAll()
+            RegistrationIdempotencyTable.deleteAll()
+            RegistrationsTable.deleteAll()
+        }
+    }
 
     @Test
     fun `email availability reflects registration state`() {
@@ -57,7 +99,7 @@ class InMemoryRegistrationServiceTest {
 
         assertTrue(resend.sent)
         assertNotNull(resend.debugVerificationToken)
-        assertNotNull(resend.cooldownSeconds)
+        assertEquals(1, resend.cooldownSeconds)
     }
 
     @Test
@@ -95,8 +137,8 @@ class InMemoryRegistrationServiceTest {
                 photoUrl = "http://example.com/avatar.png",
                 about = "About me",
                 locale = "ru-KZ",
-                timezone = "Asia/Almaty"
-            )
+                timezone = "Asia/Almaty",
+            ),
         )
 
         assertEquals(setOf("photoUrl", "about", "locale", "timezone"), result.updated.toSet())
@@ -144,12 +186,11 @@ class InMemoryRegistrationServiceTest {
                 requireLower = true,
                 requireDigit = true,
                 requireSymbol = false,
-                forbidBreachedTopN = true
+                forbidBreachedTopN = true,
             ),
-            exposeDebugTokens = true
+            exposeDebugTokens = true,
         )
-        val clock = MutableClock(baseInstant)
-        val service = InMemoryRegistrationService(customConfig, clock)
+        val (service, _) = createService(customConfig)
 
         val policy = service.getPasswordPolicy()
         val limits = service.getLimits()
@@ -160,20 +201,22 @@ class InMemoryRegistrationServiceTest {
         assertEquals(customConfig.emailTokenTtlMinutes.toInt(), limits.emailTokenTtlMinutes)
     }
 
-    private fun createService(): Pair<InMemoryRegistrationService, MutableClock> {
+    private fun createService(config: RegistrationConfig = defaultConfig()): Pair<RegistrationServiceImpl, MutableClock> {
         val clock = MutableClock(baseInstant)
-        val config = RegistrationConfig(
-            resendCooldownSeconds = 1,
-            maxResendsPerDay = 5,
-            exposeDebugTokens = true
-        )
-        return InMemoryRegistrationService(config, clock) to clock
+        val service = RegistrationServiceImpl(context.database, config, clock)
+        return service to clock
     }
+
+    private fun defaultConfig(): RegistrationConfig = RegistrationConfig(
+        resendCooldownSeconds = 1,
+        maxResendsPerDay = 5,
+        exposeDebugTokens = true,
+    )
 
     private fun sampleRequest(
         iin: String = "123456789012",
         email: String,
-        password: String = "Password1!"
+        password: String = "Password1!",
     ): RegistrationRequest = RegistrationRequest(
         iin = iin,
         email = email,
@@ -183,7 +226,7 @@ class InMemoryRegistrationServiceTest {
         timezone = "Asia/Almaty",
         acceptedTermsVersion = "v1",
         acceptedPrivacyVersion = "v1",
-        marketingOptIn = true
+        marketingOptIn = true,
     )
 
     private class MutableClock(initial: Instant) : Clock() {

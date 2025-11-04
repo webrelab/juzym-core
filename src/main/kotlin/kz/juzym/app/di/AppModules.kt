@@ -22,9 +22,9 @@ import kz.juzym.config.UserLinksConfig
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
-import kz.juzym.registration.InMemoryRegistrationService
 import kz.juzym.registration.RegistrationConfig
 import kz.juzym.registration.RegistrationService
+import kz.juzym.registration.RegistrationServiceImpl
 import kz.juzym.user.ExposedUserRepository
 import kz.juzym.user.ExposedUserTokenRepository
 import kz.juzym.user.MailSenderStub
@@ -173,9 +173,9 @@ val serviceModule = module {
             exposeDebugTokens = appConfig.environment == Environment.TEST
         )
     }
-    single { InMemoryRegistrationService(get()) }
+    single { RegistrationServiceImpl(get<PostgresDatabaseContext>().database, get()) }
     single<RegistrationService> {
-        val implementation: RegistrationService = get<InMemoryRegistrationService>()
+        val implementation: RegistrationService = get<RegistrationServiceImpl>()
         auditProxy(implementation, get())
     }
 }
