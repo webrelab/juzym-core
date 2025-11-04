@@ -3,6 +3,8 @@ package kz.juzym.config
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kz.juzym.audit.AuditEventsTable
+import kz.juzym.auth.UserSessionsTable
+import kz.juzym.user.UserRegistrationIdempotencyTable
 import kz.juzym.user.UserTokensTable
 import kz.juzym.user.UsersTable
 import kz.juzym.user.avatar.AvatarAchievementsTable
@@ -35,6 +37,8 @@ class DatabaseFactory(private val config: PostgresConfig) {
             SchemaUtils.create(
                 UsersTable,
                 UserTokensTable,
+                UserRegistrationIdempotencyTable,
+                UserSessionsTable,
                 AuditEventsTable,
                 AvatarsTable,
                 AvatarSkillsTable,

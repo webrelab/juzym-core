@@ -1,10 +1,12 @@
 package kz.juzym.core
 
 import kz.juzym.app.Application
+import kz.juzym.config.AppConfigLoader
+import kz.juzym.config.Environment
 import kz.juzym.http.HttpServer
 
 fun main() {
-    val application = Application()
+    val application = Application(AppConfigLoader.load(Environment.TEST))
     val context = application.start()
     val server = HttpServer(context)
 

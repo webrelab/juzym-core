@@ -1,7 +1,6 @@
 package kz.juzym.config
 
-import java.util.HashMap
-import java.util.Locale
+import java.util.*
 
 data class ApplicationConfig(
     val environment: Environment,
@@ -159,9 +158,9 @@ object AppConfigLoader {
                 store = AuditStoreType.fromValue(readOptional("audit_store"))
             ),
             jwt = JwtProperties(
-                secret = read("jwt_secret"),
-                issuer = read("jwt_issuer"),
-                ttlSeconds = read("jwt_ttl_seconds").toLong()
+                secret = read("jwt_secret") { "jwt_secret" },
+                issuer = read("jwt_issuer") { "jwt_issuer" },
+                ttlSeconds = read("jwt_ttl_seconds") { "3600" }.toLong()
             ),
             userLinks = UserLinksConfig(
                 activationDomain = readUserLinkDomain("user_activation_domain", defaultUserLinksDomain),

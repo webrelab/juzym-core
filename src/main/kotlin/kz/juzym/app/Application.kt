@@ -6,6 +6,7 @@ import kz.juzym.app.di.infrastructureModule
 import kz.juzym.app.di.repositoryModule
 import kz.juzym.app.di.serviceModule
 import kz.juzym.audit.AuditEventStore
+import kz.juzym.auth.AuthService
 import kz.juzym.config.AppConfigLoader
 import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.DatabaseFactory
@@ -13,10 +14,11 @@ import kz.juzym.config.Environment
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
-import kz.juzym.registration.RegistrationService
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserService
+import kz.juzym.user.avatar.AvatarService
 import kz.juzym.user.security.jwt.JwtService
+import kz.juzym.user.security.PasswordHasher
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import org.koin.core.KoinApplication
@@ -62,7 +64,9 @@ class Application(
             jwtService = koin.get(),
             graphService = koin.get(),
             auditEventStore = koin.get(),
-            registrationService = koin.get(),
+            avatarService = koin.get(),
+            authService = koin.get(),
+            passwordHasher = koin.get(),
             koinApplication = koinApplication
         )
     }
@@ -87,7 +91,9 @@ data class ApplicationContext(
     val jwtService: JwtService,
     val graphService: GraphService,
     val auditEventStore: AuditEventStore,
-    val registrationService: RegistrationService,
+    val avatarService: AvatarService,
+    val authService: AuthService,
+    val passwordHasher: PasswordHasher,
     private val koinApplication: KoinApplication
 ) {
     fun close() {

@@ -126,7 +126,10 @@ class AvatarServiceTest {
                 statement[email] = "user-${userId}@example.com"
                 statement[passwordHash] = "hash"
                 statement[status] = kz.juzym.user.UserStatus.ACTIVE
-                statement[createdAt] = OffsetDateTime.now(ZoneOffset.UTC)
+                val now = OffsetDateTime.now(ZoneOffset.UTC)
+                statement[UsersTable.displayName] = "Avatar User"
+                statement[UsersTable.createdAt] = now
+                statement[UsersTable.updatedAt] = now
             }
         }
         return userId

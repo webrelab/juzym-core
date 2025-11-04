@@ -10,25 +10,25 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import kz.juzym.registration.ApiError
-import kz.juzym.registration.ApiErrorBody
-import kz.juzym.registration.CompleteProfileRequest
-import kz.juzym.registration.PasswordForgotRequest
-import kz.juzym.registration.PasswordResetRequest
-import kz.juzym.registration.RegistrationConflictException
-import kz.juzym.registration.RegistrationInvalidTokenException
-import kz.juzym.registration.RegistrationNotFoundException
-import kz.juzym.registration.RegistrationRateLimitException
-import kz.juzym.registration.RegistrationRequest
-import kz.juzym.registration.RegistrationService
-import kz.juzym.registration.RegistrationUnauthorizedException
-import kz.juzym.registration.RegistrationValidationException
-import kz.juzym.registration.ResendEmailRequest
-import kz.juzym.registration.VerificationRequest
+import kz.juzym.user.ApiError
+import kz.juzym.user.ApiErrorBody
+import kz.juzym.user.CompleteProfileRequest
+import kz.juzym.user.PasswordForgotRequest
+import kz.juzym.user.PasswordResetRequest
+import kz.juzym.user.RegistrationConflictException
+import kz.juzym.user.RegistrationInvalidTokenException
+import kz.juzym.user.RegistrationNotFoundException
+import kz.juzym.user.RegistrationRateLimitException
+import kz.juzym.user.RegistrationRequest
+import kz.juzym.user.UserService
+import kz.juzym.user.RegistrationUnauthorizedException
+import kz.juzym.user.RegistrationValidationException
+import kz.juzym.user.ResendEmailRequest
+import kz.juzym.user.VerificationRequest
 import io.ktor.util.pipeline.PipelineContext
 import java.util.UUID
 
-fun Route.registrationRoutes(service: RegistrationService) {
+fun Route.registrationRoutes(service: UserService) {
     route("/auth") {
         route("/registration") {
             get("/email-availability") {
