@@ -11,7 +11,7 @@ import org.junit.jupiter.api.TestInstance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.UUID
+import java.util.*
 import kotlin.random.Random
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -154,8 +154,8 @@ class AuthApiTest {
             .`when`()
             .post("/auth/login")
             .then()
-            .statusCode(401)
-            .body("error.code", equalTo("invalid_credentials"))
+            .statusCode(403)
+            .body("error.code", equalTo("user_not_activated"))
     }
 
     @Test

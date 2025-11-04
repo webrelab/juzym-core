@@ -1,15 +1,11 @@
 package kz.juzym.http.routes
 
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.call
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
-import io.ktor.server.routing.Route
-import io.ktor.server.routing.get
-import io.ktor.server.routing.patch
-import io.ktor.server.routing.post
-import io.ktor.server.routing.route
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import io.ktor.util.pipeline.*
 import kz.juzym.user.ApiError
 import kz.juzym.user.ApiErrorBody
 import kz.juzym.user.CompleteProfileRequest
@@ -20,15 +16,19 @@ import kz.juzym.user.RegistrationInvalidTokenException
 import kz.juzym.user.RegistrationNotFoundException
 import kz.juzym.user.RegistrationRateLimitException
 import kz.juzym.user.RegistrationRequest
-import kz.juzym.user.UserService
 import kz.juzym.user.RegistrationUnauthorizedException
 import kz.juzym.user.RegistrationValidationException
 import kz.juzym.user.ResendEmailRequest
+import kz.juzym.user.UserService
 import kz.juzym.user.VerificationRequest
-import io.ktor.util.pipeline.PipelineContext
-import java.util.UUID
+import java.util.*
 
 fun Route.registrationRoutes(service: UserService) {
+    route("/health") {
+        get {
+            call.respond(HttpStatusCode.OK, "OK")
+        }
+    }
     route("/auth") {
         route("/registration") {
             get("/email-availability") {

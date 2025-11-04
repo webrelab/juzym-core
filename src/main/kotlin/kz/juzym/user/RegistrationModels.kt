@@ -2,7 +2,7 @@ package kz.juzym.user
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 data class EmailAvailabilityResponse(
     val email: String,
@@ -145,7 +145,7 @@ data class RegistrationConfig(
     val maxResendsPerDay: Int = 5,
     val maxAttemptsPerIpPerHour: Int = 20,
     val passwordPolicy: PasswordPolicyResponse = PasswordPolicyResponse(
-        minLength = 10,
+        minLength = 8,
         requireUpper = false,
         requireLower = true,
         requireDigit = true,
