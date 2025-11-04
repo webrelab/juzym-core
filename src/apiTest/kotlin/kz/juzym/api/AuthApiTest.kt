@@ -199,6 +199,7 @@ class AuthApiTest {
 
         RestAssured
             .given()
+            .header("Authorization", "Bearer $accessToken")
             .cookie("refreshToken", refreshToken)
             .`when`()
             .post("/auth/logout")
