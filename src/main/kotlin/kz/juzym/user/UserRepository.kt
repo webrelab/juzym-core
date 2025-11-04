@@ -12,6 +12,7 @@ import java.util.UUID
 
 interface UserRepository {
     fun findByIin(iin: String): User?
+    fun findByEmail(email: String): User?
     fun findById(id: UUID): User?
     fun create(user: User)
     fun updateStatus(userId: UUID, status: UserStatus)
@@ -28,6 +29,12 @@ class ExposedUserRepository(
 
     override fun findByIin(iin: String): User? = transaction(database) {
         UsersTable.selectAll().where { UsersTable.iin eq iin }
+            .singleOrNull()
+            ?.toUser()
+    }
+
+    override fun findByEmail(email: String): User? = transaction(database) {
+        UsersTable.selectAll().where { UsersTable.email eq email }
             .singleOrNull()
             ?.toUser()
     }

@@ -6,6 +6,8 @@ import kz.juzym.app.ApplicationContext
 
 fun Route.publicApiRoutes(context: ApplicationContext) {
     route("/v1") {
+        authRoutes(context)
         registrationRoutes(context.registrationService)
+        devRoutes(context)
     }
 }

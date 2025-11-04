@@ -4,6 +4,10 @@ import kz.juzym.audit.AuditEventStore
 import kz.juzym.audit.PostgresAuditEventStore
 import kz.juzym.audit.StdoutAuditEventStore
 import kz.juzym.audit.auditProxy
+import kz.juzym.auth.AuthConfig
+import kz.juzym.auth.AuthService
+import kz.juzym.auth.AuthServiceImpl
+import kz.juzym.auth.UserSessionRepository
 import kz.juzym.config.ApplicationConfig
 import kz.juzym.config.AuditConfig
 import kz.juzym.config.AuditStoreType
@@ -15,13 +19,16 @@ import kz.juzym.config.PostgresConfig
 import kz.juzym.config.PostgresDatabaseContext
 import kz.juzym.config.RedisConfig
 import kz.juzym.config.UserLinksConfig
+import kz.juzym.dev.DebugMailStore
+import kz.juzym.dev.InMemoryDebugMailStore
+import kz.juzym.dev.NoopDebugMailStore
+import kz.juzym.dev.RecordingMailSender
 import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
 import kz.juzym.registration.InMemoryRegistrationService
 import kz.juzym.registration.RegistrationConfig
 import kz.juzym.registration.RegistrationService
-import kz.juzym.user.ConsoleMailSenderStub
 import kz.juzym.user.ExposedUserRepository
 import kz.juzym.user.ExposedUserTokenRepository
 import kz.juzym.user.MailSenderStub
@@ -34,6 +41,8 @@ import kz.juzym.user.security.BcryptPasswordHasher
 import kz.juzym.user.security.PasswordHasher
 import kz.juzym.user.security.jwt.JwtConfig
 import kz.juzym.user.security.jwt.JwtService
+import kz.juzym.user.avatar.AvatarService
+import kz.juzym.user.avatar.AvatarServiceImpl
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.neo4j.driver.AuthTokens
@@ -79,6 +88,7 @@ val repositoryModule = module {
     single { GraphRepository(get()) }
     single<UserRepository> { ExposedUserRepository(get<PostgresDatabaseContext>().database, get()) }
     single<UserTokenRepository> { ExposedUserTokenRepository(get<PostgresDatabaseContext>().database) }
+    single { UserSessionRepository(get<PostgresDatabaseContext>().database) }
 }
 
 val auditModule = module {
@@ -92,8 +102,31 @@ val auditModule = module {
 }
 
 val serviceModule = module {
+    single {
+        val jwtProps = get<JwtProperties>()
+        AuthConfig(
+            accessTokenTtl = java.time.Duration.ofSeconds(jwtProps.ttlSeconds),
+            refreshTokenTtl = java.time.Duration.ofDays(30),
+            rememberMeRefreshTokenTtl = java.time.Duration.ofDays(30)
+        )
+    }
     single<PasswordHasher> { BcryptPasswordHasher() }
-    single<MailSenderStub> { ConsoleMailSenderStub() }
+    single<DebugMailStore> {
+        val appConfig = get<ApplicationConfig>()
+        return@single if (appConfig.environment == Environment.DEV || appConfig.environment == Environment.TEST) {
+            InMemoryDebugMailStore()
+        } else {
+            NoopDebugMailStore()
+        }
+    }
+    single<MailSenderStub> {
+        val debugStore = get<DebugMailStore>()
+        if (debugStore !is NoopDebugMailStore) {
+            RecordingMailSender(store = debugStore, delegate = kz.juzym.user.ConsoleMailSenderStub())
+        } else {
+            kz.juzym.user.ConsoleMailSenderStub()
+        }
+    }
     single {
         val jwtProps = get<JwtProperties>()
         JwtService(
@@ -103,6 +136,11 @@ val serviceModule = module {
                 ttl = java.time.Duration.ofSeconds(jwtProps.ttlSeconds)
             )
         )
+    }
+    single { AvatarServiceImpl(get<PostgresDatabaseContext>().database) }
+    single<AvatarService> {
+        val implementation: AvatarService = get<AvatarServiceImpl>()
+        auditProxy(implementation, get())
     }
     single {
         val links = get<UserLinksConfig>()
@@ -131,6 +169,20 @@ val serviceModule = module {
     single<GraphService> {
         val real: GraphService = get<GraphServiceImpl>()
         auditProxy(real, get())
+    }
+    single {
+        AuthServiceImpl(
+            userRepository = get(),
+            passwordHasher = get(),
+            jwtService = get(),
+            sessionRepository = get(),
+            authConfig = get(),
+            avatarService = get()
+        )
+    }
+    single<AuthService> {
+        val implementation: AuthService = get<AuthServiceImpl>()
+        auditProxy(implementation, get())
     }
     single {
         val appConfig = get<ApplicationConfig>()
