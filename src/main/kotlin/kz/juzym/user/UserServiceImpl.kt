@@ -4,12 +4,10 @@ import kz.juzym.user.security.PasswordHasher
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertAndGetId
-import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
@@ -17,7 +15,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
-import java.util.UUID
+import java.util.*
 
 class UserServiceImpl(
     private val database: org.jetbrains.exposed.sql.Database,
@@ -34,7 +32,8 @@ class UserServiceImpl(
         val normalized = normalizeEmail(email)
         validateEmail(normalized)
         val exists = transaction(database) {
-            !UsersTable.select { UsersTable.email eq normalized }.empty()
+            !UsersTable.selectAll()
+                .where { UsersTable.email eq normalized }.empty()
         }
         return EmailAvailabilityResponse(email = normalized, available = !exists)
     }
@@ -59,39 +58,48 @@ class UserServiceImpl(
                 }
             }
 
-            if (!UsersTable.select { UsersTable.email eq normalizedEmail }.empty()) {
+            if (!UsersTable.selectAll()
+                    .where { UsersTable.email eq normalizedEmail }.empty()
+            ) {
                 throw RegistrationConflictException("email_already_registered", "Email is already registered")
             }
-            if (!UsersTable.select { UsersTable.iin eq normalizedIin }.empty()) {
+            if (!UsersTable.selectAll()
+                    .where { UsersTable.iin eq normalizedIin }.empty()
+            ) {
                 throw RegistrationConflictException("iin_already_registered", "IIN is already registered")
             }
 
             val passwordHash = passwordHasher.hash(request.password)
             val expiresAt = now.plusSeconds(registrationConfig.emailTokenTtlMinutes * 60)
             val entityId: EntityID<UUID> = UsersTable.insertAndGetId { statement ->
-                statement[UsersTable.iin] = normalizedIin
-                statement[UsersTable.email] = normalizedEmail
+                statement[iin] = normalizedIin
+                statement[email] = normalizedEmail
                 statement[UsersTable.passwordHash] = passwordHash
-                statement[UsersTable.status] = UserStatus.PENDING
-                statement[UsersTable.displayName] = request.displayName.trim()
-                statement[UsersTable.locale] = request.locale
-                statement[UsersTable.timezone] = request.timezone
-                statement[UsersTable.acceptedTermsVersion] = request.acceptedTermsVersion
-                statement[UsersTable.acceptedPrivacyVersion] = request.acceptedPrivacyVersion
-                statement[UsersTable.marketingOptIn] = request.marketingOptIn ?: false
-                statement[UsersTable.avatarId] = null
-                statement[UsersTable.photoUrl] = null
-                statement[UsersTable.about] = null
-                statement[UsersTable.activationTokenExpiresAt] = expiresAt.toOffsetDateTime()
-                statement[UsersTable.lastEmailSentAt] = now.toOffsetDateTime()
-                statement[UsersTable.resendCount] = 0
-                statement[UsersTable.resendCountResetAt] = now.toOffsetDateTime()
-                statement[UsersTable.createdAt] = now.toOffsetDateTime()
-                statement[UsersTable.updatedAt] = now.toOffsetDateTime()
+                statement[status] = UserStatus.PENDING
+                statement[displayName] = request.displayName.trim()
+                statement[locale] = request.locale
+                statement[timezone] = request.timezone
+                statement[acceptedTermsVersion] = request.acceptedTermsVersion
+                statement[acceptedPrivacyVersion] = request.acceptedPrivacyVersion
+                statement[marketingOptIn] = request.marketingOptIn ?: false
+                statement[avatarId] = null
+                statement[photoUrl] = null
+                statement[about] = null
+                statement[activationTokenExpiresAt] = expiresAt.toOffsetDateTime()
+                statement[lastEmailSentAt] = now.toOffsetDateTime()
+                statement[resendCount] = 0
+                statement[resendCountResetAt] = now.toOffsetDateTime()
+                statement[createdAt] = now.toOffsetDateTime()
+                statement[updatedAt] = now.toOffsetDateTime()
             }
             val userId = entityId.value
 
-            val activationToken = createUserToken(userId, UserTokenType.ACTIVATION, Duration.ofMinutes(registrationConfig.emailTokenTtlMinutes), now)
+            val activationToken = createUserToken(
+                userId,
+                UserTokenType.ACTIVATION,
+                Duration.ofMinutes(registrationConfig.emailTokenTtlMinutes),
+                now
+            )
             val response = RegistrationResponse(
                 userId = userId,
                 status = RegistrationStatus.PENDING,
@@ -127,7 +135,8 @@ class UserServiceImpl(
         val now = clock.instant()
 
         val result: OperationResult<ResendEmailResponse> = transaction(database) {
-            val row = UsersTable.select { UsersTable.email eq normalizedEmail }.singleOrNull()
+            val row = UsersTable.selectAll()
+                .where { UsersTable.email eq normalizedEmail }.singleOrNull()
                 ?: throw RegistrationNotFoundException("not_found_if_not_pending", "Registration not found")
             val user = row.toUserRecord()
             if (user.iin != normalizedIin) {
@@ -155,14 +164,20 @@ class UserServiceImpl(
                 throw RegistrationRateLimitException(registrationConfig.resendCooldownSeconds)
             }
 
-            val activationToken = createUserToken(user.userId, UserTokenType.ACTIVATION, Duration.ofMinutes(registrationConfig.emailTokenTtlMinutes), now)
+            val activationToken = createUserToken(
+                user.userId,
+                UserTokenType.ACTIVATION,
+                Duration.ofMinutes(registrationConfig.emailTokenTtlMinutes),
+                now
+            )
 
             UsersTable.update({ UsersTable.id eq user.userId }) { statement ->
-                statement[UsersTable.activationTokenExpiresAt] = activationToken.expiresAt.toOffsetDateTime()
-                statement[UsersTable.lastEmailSentAt] = now.toOffsetDateTime()
+                statement[activationTokenExpiresAt] = activationToken.expiresAt.toOffsetDateTime()
+                statement[lastEmailSentAt] = now.toOffsetDateTime()
                 statement[UsersTable.resendCount] = resendCount + 1
-                statement[UsersTable.resendCountResetAt] = if (sameDay) user.resendCountResetAt?.toOffsetDateTime() else now.toOffsetDateTime()
-                statement[UsersTable.updatedAt] = now.toOffsetDateTime()
+                statement[resendCountResetAt] =
+                    if (sameDay) user.resendCountResetAt?.toOffsetDateTime() else now.toOffsetDateTime()
+                statement[updatedAt] = now.toOffsetDateTime()
             }
 
             OperationResult(
@@ -186,9 +201,10 @@ class UserServiceImpl(
     override fun verifyEmail(token: String): VerificationResponse {
         val now = clock.instant()
         return transaction(database) {
-            val tokenRow = UserTokensTable.select {
-                (UserTokensTable.token eq token) and (UserTokensTable.type eq UserTokenType.ACTIVATION)
-            }.singleOrNull() ?: throw RegistrationInvalidTokenException(
+            val tokenRow = UserTokensTable.selectAll()
+                .where {
+                    (UserTokensTable.token eq token) and (UserTokensTable.type eq UserTokenType.ACTIVATION)
+                }.singleOrNull() ?: throw RegistrationInvalidTokenException(
                 code = "invalid_or_expired_token",
                 messageText = "Verification token is invalid",
             )
@@ -200,7 +216,8 @@ class UserServiceImpl(
             }
 
             val userId = tokenRow[UserTokensTable.userId]
-            val row = UsersTable.select { UsersTable.id eq userId }.singleOrNull()
+            val row = UsersTable.selectAll()
+                .where { UsersTable.id eq userId }.singleOrNull()
                 ?: throw RegistrationInvalidTokenException("invalid_or_expired_token", "Verification token not found")
             val user = row.toUserRecord()
             if (user.status == RegistrationStatus.ACTIVE) {
@@ -209,10 +226,10 @@ class UserServiceImpl(
 
             val avatarId = user.avatarId ?: UUID.randomUUID()
             UsersTable.update({ UsersTable.id eq userId }) { statement ->
-                statement[UsersTable.status] = UserStatus.ACTIVE
+                statement[status] = UserStatus.ACTIVE
                 statement[UsersTable.avatarId] = avatarId
-                statement[UsersTable.activationTokenExpiresAt] = null
-                statement[UsersTable.updatedAt] = now.toOffsetDateTime()
+                statement[activationTokenExpiresAt] = null
+                statement[updatedAt] = now.toOffsetDateTime()
             }
             UserTokensTable.deleteWhere { UserTokensTable.token eq token }
 
@@ -232,7 +249,8 @@ class UserServiceImpl(
     override fun completeProfile(userId: UUID, request: CompleteProfileRequest): CompleteProfileResponse {
         val now = clock.instant()
         return transaction(database) {
-            val row = UsersTable.select { UsersTable.id eq userId }.singleOrNull()
+            val row = UsersTable.selectAll()
+                .where { UsersTable.id eq userId }.singleOrNull()
                 ?: throw RegistrationUnauthorizedException("User not found")
             val user = row.toUserRecord()
             if (user.status != RegistrationStatus.ACTIVE) {
@@ -245,22 +263,22 @@ class UserServiceImpl(
 
             UsersTable.update({ UsersTable.id eq userId }) { statement ->
                 request.photoUrl?.let {
-                    statement[UsersTable.photoUrl] = it
+                    statement[photoUrl] = it
                     updatedFields += "photoUrl"
                     changed = true
                 }
                 request.about?.let {
-                    statement[UsersTable.about] = it
+                    statement[about] = it
                     updatedFields += "about"
                     changed = true
                 }
                 request.locale?.let {
-                    statement[UsersTable.locale] = it
+                    statement[locale] = it
                     updatedFields += "locale"
                     changed = true
                 }
                 request.timezone?.let {
-                    statement[UsersTable.timezone] = it
+                    statement[timezone] = it
                     updatedFields += "timezone"
                     changed = true
                 }
@@ -269,7 +287,7 @@ class UserServiceImpl(
                         avatarId = UUID.randomUUID()
                     }
                     statement[UsersTable.avatarId] = avatarId
-                    statement[UsersTable.updatedAt] = now.toOffsetDateTime()
+                    statement[updatedAt] = now.toOffsetDateTime()
                 }
             }
 
@@ -296,7 +314,8 @@ class UserServiceImpl(
         val normalizedEmail = normalizeEmail(email)
         val now = clock.instant()
         val result = transaction(database) {
-            val row = UsersTable.select { UsersTable.email eq normalizedEmail }.singleOrNull()
+            val row = UsersTable.selectAll()
+                .where { UsersTable.email eq normalizedEmail }.singleOrNull()
                 ?: throw RegistrationNotFoundException("email_not_found", "Email not found")
             val user = row.toUserRecord()
             val token = createUserToken(user.userId, UserTokenType.PASSWORD_RESET, Duration.ofHours(1), now)
@@ -318,9 +337,10 @@ class UserServiceImpl(
         validatePassword(newPassword)
         val now = clock.instant()
         return transaction(database) {
-            val tokenRow = UserTokensTable.select {
-                (UserTokensTable.token eq token) and (UserTokensTable.type eq UserTokenType.PASSWORD_RESET)
-            }.singleOrNull() ?: throw RegistrationInvalidTokenException(
+            val tokenRow = UserTokensTable.selectAll()
+                .where {
+                    (UserTokensTable.token eq token) and (UserTokensTable.type eq UserTokenType.PASSWORD_RESET)
+                }.singleOrNull() ?: throw RegistrationInvalidTokenException(
                 code = "invalid_or_expired_token",
                 messageText = "Reset token invalid",
             )
@@ -332,8 +352,8 @@ class UserServiceImpl(
             val userId = tokenRow[UserTokensTable.userId]
             val hashed = passwordHasher.hash(newPassword)
             val updated = UsersTable.update({ UsersTable.id eq userId }) { statement ->
-                statement[UsersTable.passwordHash] = hashed
-                statement[UsersTable.updatedAt] = now.toOffsetDateTime()
+                statement[passwordHash] = hashed
+                statement[updatedAt] = now.toOffsetDateTime()
             }
             if (updated == 0) {
                 throw RegistrationInvalidTokenException("invalid_or_expired_token", "Reset token invalid")
@@ -347,7 +367,8 @@ class UserServiceImpl(
         val normalizedEmail = normalizeEmail(email)
         val now = clock.instant()
         return transaction(database) {
-            val row = UsersTable.select { UsersTable.email eq normalizedEmail }.singleOrNull()
+            val row = UsersTable.selectAll()
+                .where { UsersTable.email eq normalizedEmail }.singleOrNull()
                 ?: throw RegistrationNotFoundException("not_found", "Email not registered")
             val user = row.toUserRecord()
             val cooldown = user.lastEmailSentAt?.let { last ->
@@ -369,7 +390,8 @@ class UserServiceImpl(
         val user = userRepository.findById(userId) ?: return EmailChangeRequestResult.NotFound
         val normalizedEmail = normalizeEmail(newEmail)
         val emailTaken = transaction(database) {
-            !UsersTable.select { (UsersTable.email eq normalizedEmail) and (UsersTable.id neq userId) }.empty()
+            !UsersTable.selectAll()
+                .where { (UsersTable.email eq normalizedEmail) and (UsersTable.id neq userId) }.empty()
         }
         if (emailTaken) {
             throw RegistrationConflictException("email_already_registered", "Email is already registered")
@@ -420,13 +442,15 @@ class UserServiceImpl(
     }
 
     private fun findIdempotentResponse(key: String): RegistrationResponse? = transaction(database) {
-        UserRegistrationIdempotencyTable.select { UserRegistrationIdempotencyTable.key eq key }
+        UserRegistrationIdempotencyTable.selectAll()
+            .where { UserRegistrationIdempotencyTable.key eq key }
             .singleOrNull()
             ?.toRegistrationResponse()
     }
 
     private fun findIdempotentResponseInTransaction(key: String): RegistrationResponse? {
-        return UserRegistrationIdempotencyTable.select { UserRegistrationIdempotencyTable.key eq key }
+        return UserRegistrationIdempotencyTable.selectAll()
+            .where { UserRegistrationIdempotencyTable.key eq key }
             .singleOrNull()
             ?.toRegistrationResponse()
     }
@@ -435,10 +459,10 @@ class UserServiceImpl(
         UserRegistrationIdempotencyTable.insert { statement ->
             statement[UserRegistrationIdempotencyTable.key] = key
             statement[UserRegistrationIdempotencyTable.userId] = userId
-            statement[UserRegistrationIdempotencyTable.responseStatus] = response.status
-            statement[UserRegistrationIdempotencyTable.responseVerificationExpiresAt] = response.emailVerification.expiresAt.toOffsetDateTime()
-            statement[UserRegistrationIdempotencyTable.responseDebugToken] = response.debugVerificationToken
-            statement[UserRegistrationIdempotencyTable.createdAt] = now.toOffsetDateTime()
+            statement[responseStatus] = response.status
+            statement[responseVerificationExpiresAt] = response.emailVerification.expiresAt.toOffsetDateTime()
+            statement[responseDebugToken] = response.debugVerificationToken
+            statement[createdAt] = now.toOffsetDateTime()
         }
     }
 
@@ -523,7 +547,10 @@ class UserServiceImpl(
         }
         val classes = listOf(hasLower, hasUpper, hasDigit, hasSymbol).count { it }
         if (classes < 2) {
-            throw RegistrationValidationException("weak_password", "Password must include at least two character classes")
+            throw RegistrationValidationException(
+                "weak_password",
+                "Password must include at least two character classes"
+            )
         }
         val topBreached = setOf("123456", "password", "qwerty", "12345678")
         if (registrationConfig.passwordPolicy.forbidBreachedTopN && topBreached.contains(password.lowercase())) {

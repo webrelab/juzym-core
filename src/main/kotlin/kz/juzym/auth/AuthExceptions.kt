@@ -1,6 +1,6 @@
 package kz.juzym.auth
 
-import io.ktor.http.HttpStatusCode
+import io.ktor.http.*
 
 open class AuthException(
     val errorCode: String,
@@ -19,6 +19,12 @@ class AccountBlockedException : AuthException(
     errorCode = "account_blocked",
     status = HttpStatusCode.Forbidden,
     message = "Аккаунт заблокирован"
+)
+
+class UserNotActivatedException : AuthException (
+    errorCode = "user_not_activated",
+    status = HttpStatusCode.Forbidden,
+    message = "Пользователь не активирован"
 )
 
 class InvalidRefreshTokenException : AuthException(

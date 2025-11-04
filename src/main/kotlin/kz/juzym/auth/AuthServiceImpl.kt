@@ -6,7 +6,7 @@ import kz.juzym.user.avatar.AvatarService
 import kz.juzym.user.security.PasswordHasher
 import kz.juzym.user.security.jwt.JwtService
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import kotlin.random.Random
 
 class AuthServiceImpl(
@@ -35,6 +35,9 @@ class AuthServiceImpl(
 
         if (user.status == UserStatus.BLOCKED) {
             throw AccountBlockedException()
+        }
+        if (user.status == UserStatus.PENDING) {
+            throw UserNotActivatedException()
         }
         if (user.status != UserStatus.ACTIVE) {
             throw InvalidCredentialsException()
