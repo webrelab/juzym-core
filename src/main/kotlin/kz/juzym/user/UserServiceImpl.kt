@@ -20,6 +20,7 @@ import java.util.*
 class UserServiceImpl(
     private val database: org.jetbrains.exposed.sql.Database,
     private val userRepository: UserRepository,
+    private val userRoleRepository: UserRoleRepository,
     private val tokenRepository: UserTokenRepository,
     private val mailSender: MailSenderStub,
     private val passwordHasher: PasswordHasher,
@@ -231,6 +232,7 @@ class UserServiceImpl(
                 statement[activationTokenExpiresAt] = null
                 statement[updatedAt] = now.toOffsetDateTime()
             }
+            userRoleRepository.assignRole(userId, Role.USER)
             UserTokensTable.deleteWhere { UserTokensTable.token eq token }
 
             VerificationResponse(

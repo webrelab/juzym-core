@@ -1,6 +1,8 @@
 package kz.juzym.auth
 
+import kz.juzym.user.Role
 import kz.juzym.user.UserRepository
+import kz.juzym.user.UserRoleRepository
 import kz.juzym.user.UserStatus
 import kz.juzym.user.avatar.AvatarService
 import kz.juzym.user.security.PasswordHasher
@@ -15,7 +17,8 @@ class AuthServiceImpl(
     private val jwtService: JwtService,
     private val sessionRepository: UserSessionRepository,
     private val authConfig: AuthConfig,
-    private val avatarService: AvatarService
+    private val avatarService: AvatarService,
+    private val userRoleRepository: UserRoleRepository
 ) : AuthService {
 
     override fun login(request: LoginRequest, metadata: AuthMetadata): LoginResult {
@@ -49,7 +52,8 @@ class AuthServiceImpl(
         }
 
         val now = Instant.now()
-        val accessToken = jwtService.generate(user.id, user.iin)
+        val roles = userRoleRepository.findRoles(user.id).ifEmpty { setOf(Role.USER) }
+        val accessToken = jwtService.generate(user.id, user.iin, roles)
         val accessExpiresAt = now.plus(authConfig.accessTokenTtl)
         val refreshToken = generateRefreshToken()
         val refreshExpiresAt = now.plus(authConfig.refreshTtl(rememberMe))
@@ -102,7 +106,8 @@ class AuthServiceImpl(
         }
 
         val now = Instant.now()
-        val newAccessToken = jwtService.generate(user.id, user.iin)
+        val roles = userRoleRepository.findRoles(user.id).ifEmpty { setOf(Role.USER) }
+        val newAccessToken = jwtService.generate(user.id, user.iin, roles)
         val newAccessExpires = now.plus(authConfig.accessTokenTtl)
         val newRefreshToken = generateRefreshToken()
         val newRefreshExpires = now.plus(authConfig.refreshTtl(session.rememberMe))
