@@ -192,8 +192,8 @@ class AuthApiTest {
             .`when`()
             .post("/auth/login")
             .then()
-            .statusCode(401)
-            .body("error.code", equalTo("invalid_credentials"))
+            .statusCode(403)
+            .body("error.code", equalTo("user_not_activated"))
     }
 
     @Test
