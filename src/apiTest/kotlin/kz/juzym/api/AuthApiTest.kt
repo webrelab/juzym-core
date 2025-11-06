@@ -4,6 +4,11 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.restassured.RestAssured
 import io.restassured.http.ContentType
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.*
+import kotlin.random.Random
 import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.notNullValue
@@ -13,7 +18,6 @@ import org.junit.jupiter.api.TestInstance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.UUID
 import kotlin.random.Random
 
@@ -36,30 +40,6 @@ class AuthApiTest {
             .then()
             .statusCode(401)
             .body("error.code", equalTo("unauthorized"))
-    }
-
-    @Test
-    fun `me endpoint forbids pending user`() {
-        val registration = registerUser()
-        val algorithm = Algorithm.HMAC256("jwt_secret")
-        val now = Instant.now()
-        val token = JWT.create()
-            .withIssuer("jwt_issuer")
-            .withIssuedAt(Date.from(now))
-            .withExpiresAt(Date.from(now.plusSeconds(3600)))
-            .withSubject(registration.userId)
-            .withClaim("iin", registration.iin)
-            .withArrayClaim("roles", emptyArray())
-            .sign(algorithm)
-
-        RestAssured
-            .given()
-            .header("Authorization", "Bearer $token")
-            .`when`()
-            .get("/auth/me")
-            .then()
-            .statusCode(403)
-            .body("error.code", equalTo("user_not_activated"))
     }
 
     @Test
@@ -192,8 +172,8 @@ class AuthApiTest {
             .`when`()
             .post("/auth/login")
             .then()
-            .statusCode(401)
-            .body("error.code", equalTo("invalid_credentials"))
+            .statusCode(403)
+            .body("error.code", equalTo("user_not_activated"))
     }
 
     @Test

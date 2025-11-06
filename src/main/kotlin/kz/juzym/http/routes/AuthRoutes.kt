@@ -4,16 +4,20 @@ import io.ktor.http.Cookie
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
+import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveNullable
-import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import io.ktor.util.date.GMTDate
 import io.ktor.util.pipeline.PipelineContext
+import java.time.Duration
+import java.time.Instant
+import java.util.*
 import kz.juzym.app.ApplicationContext
 import kz.juzym.audit.SecurityContext
 import kz.juzym.auth.AuthErrorBody
@@ -37,12 +41,9 @@ import kz.juzym.auth.UnauthorizedException
 import kz.juzym.config.Environment
 import kz.juzym.user.EmailChangeConfirmationResult
 import kz.juzym.user.EmailChangeRequestResult
+import kz.juzym.user.Role
 import kz.juzym.user.security.jwt.JwtPrincipal
 import kz.juzym.user.security.jwt.JwtService
-import java.time.Duration
-import java.time.Instant
-import java.util.UUID
-import io.ktor.util.date.GMTDate
 
 fun Route.authRoutes(context: ApplicationContext) {
     val authService = context.authService
@@ -89,18 +90,18 @@ fun Route.authRoutes(context: ApplicationContext) {
             }
         }
 
-        authorize(jwtService) {
-            post("/logout") {
-                handleAuth {
-                    val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME] ?: throw UnauthorizedException()
-                    withPrincipal(jwtService) {
-                        authService.logout(refreshToken)
-                    }
-                    clearRefreshCookie(call, secureCookies)
-                    call.respond(HttpStatusCode.NoContent)
+        post("/logout") {
+            handleAuth {
+                val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME] ?: throw UnauthorizedException()
+                withPrincipal(jwtService) {
+                    authService.logout(refreshToken)
                 }
+                clearRefreshCookie(call, secureCookies)
+                call.respond(HttpStatusCode.NoContent)
             }
+        }
 
+        authorize(jwtService, Role.USER) {
             post("/logout-all") {
                 handleAuth {
                     withPrincipal(jwtService) { principal ->
@@ -133,7 +134,8 @@ fun Route.authRoutes(context: ApplicationContext) {
             delete("/sessions/{sessionId}") {
                 handleAuth {
                     withPrincipal(jwtService) { principal ->
-                        val sessionIdParam = call.parameters["sessionId"] ?: throw InvalidPayloadException("sessionId обязателен")
+                        val sessionIdParam =
+                            call.parameters["sessionId"] ?: throw InvalidPayloadException("sessionId обязателен")
                         val sessionId = runCatching { UUID.fromString(sessionIdParam) }
                             .getOrElse { throw InvalidPayloadException("Недопустимый формат sessionId") }
                         authService.revokeSession(principal.userId, sessionId)
@@ -159,9 +161,14 @@ fun Route.authRoutes(context: ApplicationContext) {
                         val result = userService.requestEmailChange(principal.userId, payload.newEmail)
                         when (result) {
                             is EmailChangeRequestResult.Sent -> {
-                                val debugLink = if (context.config.environment == Environment.TEST) result.link else null
-                                call.respond(HttpStatusCode.OK, EmailChangeRequestResponse(sent = true, debugLink = debugLink))
+                                val debugLink =
+                                    if (context.config.environment == Environment.TEST) result.link else null
+                                call.respond(
+                                    HttpStatusCode.OK,
+                                    EmailChangeRequestResponse(sent = true, debugLink = debugLink)
+                                )
                             }
+
                             EmailChangeRequestResult.NotFound -> {
                                 call.respondAuthError(
                                     AuthException(
@@ -185,6 +192,7 @@ fun Route.authRoutes(context: ApplicationContext) {
                     EmailChangeConfirmationResult.Updated -> {
                         call.respond(HttpStatusCode.OK, EmailChangeConfirmationResponse(updated = true))
                     }
+
                     EmailChangeConfirmationResult.InvalidToken -> {
                         call.respondAuthError(
                             AuthException(
