@@ -4,9 +4,10 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.createRouteFromPath
+import io.ktor.server.routing.RouteSelector
+import io.ktor.server.routing.RouteSelectorEvaluation
+import io.ktor.server.routing.RoutingResolveContext
 import io.ktor.util.AttributeKey
-import io.ktor.util.pipeline.PipelineContext
 import kz.juzym.audit.SecurityContext
 import kz.juzym.auth.AccessDeniedException
 import kz.juzym.auth.AuthException
@@ -20,7 +21,7 @@ fun Route.authorize(
     build: Route.() -> Unit
 ) {
     val allowedRoles = roles.toSet()
-    val authorizedRoute = createRouteFromPath("")
+    val authorizedRoute = createChild(AuthorizeRouteSelector)
     authorizedRoute.intercept(ApplicationCallPipeline.Plugins) {
         val principal = try {
             call.requirePrincipal(jwtService)
@@ -51,3 +52,10 @@ internal fun ApplicationCall.jwtPrincipal(): JwtPrincipal? =
     }
 
 private val JWT_PRINCIPAL_ATTRIBUTE_KEY = AttributeKey<JwtPrincipal>("JwtPrincipal")
+
+private object AuthorizeRouteSelector : RouteSelector() {
+    override fun evaluate(context: RoutingResolveContext, segmentIndex: Int): RouteSelectorEvaluation =
+        RouteSelectorEvaluation.Constant
+
+    override fun toString(): String = "authorize"
+}
