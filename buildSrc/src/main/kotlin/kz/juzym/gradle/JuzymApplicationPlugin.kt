@@ -117,7 +117,7 @@ class JuzymApplicationPlugin : Plugin<Project> {
             dockerComposeFile.set(layout.projectDirectory.file("docker/docker-compose.yml"))
             dockerWorkingDirectory.set(layout.projectDirectory.dir("docker"))
             readinessPorts.addAll(listOf(5432, 7687, 6379))
-            applicationHealthUrl.set("http://localhost:8080/health")
+            applicationHealthUrl.set("http://localhost:8080/api/v1/health")
             applicationEnvironment.putAll(
                 mapOf(
                     "APP_ENV" to "TEST",

@@ -17,9 +17,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
+import kz.juzym.user.Role
 import kz.juzym.user.User
 import kz.juzym.user.UserRepository
 import kz.juzym.user.UserStatus
+import kz.juzym.user.UserRoleRepository
 import kz.juzym.user.avatar.Avatar
 import kz.juzym.user.avatar.AvatarProfile
 import kz.juzym.user.avatar.AvatarService
@@ -34,6 +36,7 @@ class AuthServiceImplTest {
     private val jwtService = mockk<JwtService>(relaxed = true)
     private val sessionRepository = mockk<UserSessionRepository>(relaxed = true)
     private val avatarService = mockk<AvatarService>(relaxed = true)
+    private val userRoleRepository = mockk<UserRoleRepository>(relaxed = true)
 
     private val config = AuthConfig(
         accessTokenTtl = Duration.ofMinutes(15),
@@ -52,7 +55,8 @@ class AuthServiceImplTest {
             jwtService = jwtService,
             sessionRepository = sessionRepository,
             authConfig = config,
-            avatarService = avatarService
+            avatarService = avatarService,
+            userRoleRepository = userRoleRepository
         )
     }
 
@@ -66,7 +70,8 @@ class AuthServiceImplTest {
         val user = activeUser()
         every { userRepository.findByEmail(any()) } returns user
         every { passwordHasher.verify("password", user.passwordHash) } returns true
-        every { jwtService.generate(user.id, user.iin) } returns "access-token"
+        every { userRoleRepository.findRoles(user.id) } returns setOf(Role.USER)
+        every { jwtService.generate(user.id, user.iin, setOf(Role.USER)) } returns "access-token"
         val refreshSlot = slot<String>()
         every {
             sessionRepository.create(
@@ -110,6 +115,7 @@ class AuthServiceImplTest {
         val user = activeUser()
         every { userRepository.findByEmail(any()) } returns user
         every { passwordHasher.verify("password", user.passwordHash) } returns false
+        every { userRoleRepository.findRoles(user.id) } returns setOf(Role.USER)
 
         assertFailsWith<InvalidCredentialsException> {
             service.login(
@@ -160,7 +166,8 @@ class AuthServiceImplTest {
         val session = sampleSession(user.id)
         every { sessionRepository.findByRefreshToken("rt-1") } returns UserSessionRepository.TokenMatch.Current(session)
         every { userRepository.findById(user.id) } returns user
-        every { jwtService.generate(user.id, user.iin) } returns "new-access"
+        every { userRoleRepository.findRoles(user.id) } returns setOf(Role.USER)
+        every { jwtService.generate(user.id, user.iin, setOf(Role.USER)) } returns "new-access"
         every {
             sessionRepository.updateTokens(
                 sessionId = session.id,
@@ -208,6 +215,7 @@ class AuthServiceImplTest {
         val session = sampleSession(UUID.randomUUID())
         every { sessionRepository.findByRefreshToken("rt-device") } returns UserSessionRepository.TokenMatch.Current(session)
         every { userRepository.findById(session.userId) } returns activeUser(session.userId)
+        every { userRoleRepository.findRoles(session.userId) } returns setOf(Role.USER)
 
         assertFailsWith<DeviceMismatchException> {
             service.refresh("rt-device", "other-device", AuthMetadata(null, null))
@@ -219,6 +227,7 @@ class AuthServiceImplTest {
         val session = sampleSession(UUID.randomUUID())
         every { sessionRepository.findByRefreshToken("rt-blocked") } returns UserSessionRepository.TokenMatch.Current(session)
         every { userRepository.findById(session.userId) } returns activeUser(session.userId).copy(status = UserStatus.BLOCKED)
+        every { userRoleRepository.findRoles(session.userId) } returns setOf(Role.USER)
 
         assertFailsWith<AccountBlockedException> {
             service.refresh("rt-blocked", null, AuthMetadata(null, null))
@@ -231,7 +240,8 @@ class AuthServiceImplTest {
         val user = activeUser(session.userId)
         every { sessionRepository.findByRefreshToken("rt-update") } returns UserSessionRepository.TokenMatch.Current(session)
         every { userRepository.findById(session.userId) } returns user
-        every { jwtService.generate(user.id, user.iin) } returns "token"
+        every { userRoleRepository.findRoles(user.id) } returns setOf(Role.USER)
+        every { jwtService.generate(user.id, user.iin, setOf(Role.USER)) } returns "token"
         every {
             sessionRepository.updateTokens(
                 sessionId = session.id,

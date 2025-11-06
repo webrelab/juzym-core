@@ -4,6 +4,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.JWTVerifier
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTVerificationException
+import kz.juzym.user.Role
 import java.time.Duration
 import java.time.Instant
 import java.util.Date
@@ -15,7 +16,7 @@ class JwtService(private val config: JwtConfig) {
         .withIssuer(config.issuer)
         .build()
 
-    fun generate(userId: UUID, iin: String): String {
+    fun generate(userId: UUID, iin: String, roles: Set<Role>): String {
         val issuedAt = Instant.now()
         val expiresAt = issuedAt.plus(config.ttl)
         return JWT.create()
@@ -24,16 +25,26 @@ class JwtService(private val config: JwtConfig) {
             .withExpiresAt(Date.from(expiresAt))
             .withSubject(userId.toString())
             .withClaim(IIN_CLAIM, iin)
+            .withArrayClaim(ROLES_CLAIM, roles.map(Role::name).toTypedArray())
             .sign(algorithm)
     }
 
     fun verify(token: String): JwtPrincipal? = try {
         val decoded = verifier.verify(token)
+        val roles = decoded.getClaim(ROLES_CLAIM)
+            .asList(String::class.java)
+            ?.mapNotNull { value ->
+                runCatching { Role.valueOf(value) }.getOrNull()
+            }
+            ?.toSet()
+            ?: emptySet()
+
         JwtPrincipal(
             userId = UUID.fromString(decoded.subject),
             iin = decoded.getClaim(IIN_CLAIM).asString(),
             issuedAt = decoded.issuedAt.toInstant(),
-            expiresAt = decoded.expiresAt.toInstant()
+            expiresAt = decoded.expiresAt.toInstant(),
+            roles = roles
         )
     } catch (ex: JWTVerificationException) {
         null
@@ -41,6 +52,7 @@ class JwtService(private val config: JwtConfig) {
 
     companion object {
         private const val IIN_CLAIM = "iin"
+        private const val ROLES_CLAIM = "roles"
     }
 }
 
@@ -54,5 +66,6 @@ data class JwtPrincipal(
     val userId: UUID,
     val iin: String,
     val issuedAt: Instant,
-    val expiresAt: Instant
+    val expiresAt: Instant,
+    val roles: Set<Role>
 )

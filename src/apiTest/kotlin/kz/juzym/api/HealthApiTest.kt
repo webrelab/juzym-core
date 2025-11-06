@@ -12,6 +12,7 @@ class HealthApiTest {
     @BeforeAll
     fun setUp() {
         RestAssured.baseURI = System.getProperty("apiTest.baseUri", "http://localhost:8080")
+        RestAssured.basePath = "/api/v1"
     }
 
     @Test
