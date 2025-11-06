@@ -1,5 +1,7 @@
 package kz.juzym.api
 
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
 import io.restassured.RestAssured
 import io.restassured.http.ContentType
 import org.hamcrest.Matchers.equalTo
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.TestInstance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Date
 import java.util.UUID
 import kotlin.random.Random
 
@@ -22,6 +25,41 @@ class AuthApiTest {
         RestAssured.baseURI = System.getProperty("apiTest.baseUri", "http://localhost:8080")
         RestAssured.basePath = "/api/v1"
         RestAssured.enableLoggingOfRequestAndResponseIfValidationFails()
+    }
+
+    @Test
+    fun `me endpoint requires authentication`() {
+        RestAssured
+            .given()
+            .`when`()
+            .get("/auth/me")
+            .then()
+            .statusCode(401)
+            .body("error.code", equalTo("unauthorized"))
+    }
+
+    @Test
+    fun `me endpoint forbids pending user`() {
+        val registration = registerUser()
+        val algorithm = Algorithm.HMAC256("jwt_secret")
+        val now = Instant.now()
+        val token = JWT.create()
+            .withIssuer("jwt_issuer")
+            .withIssuedAt(Date.from(now))
+            .withExpiresAt(Date.from(now.plusSeconds(3600)))
+            .withSubject(registration.userId)
+            .withClaim("iin", registration.iin)
+            .withArrayClaim("roles", emptyArray())
+            .sign(algorithm)
+
+        RestAssured
+            .given()
+            .header("Authorization", "Bearer $token")
+            .`when`()
+            .get("/auth/me")
+            .then()
+            .statusCode(403)
+            .body("error.code", equalTo("user_not_activated"))
     }
 
     @Test

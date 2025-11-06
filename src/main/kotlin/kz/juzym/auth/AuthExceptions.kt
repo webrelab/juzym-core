@@ -27,6 +27,12 @@ class UserNotActivatedException : AuthException (
     message = "Пользователь не активирован"
 )
 
+class AccessDeniedException : AuthException(
+    errorCode = "access_denied",
+    status = HttpStatusCode.Forbidden,
+    message = "Недостаточно прав"
+)
+
 class InvalidRefreshTokenException : AuthException(
     errorCode = "invalid_refresh_token",
     status = HttpStatusCode.Unauthorized,

@@ -23,10 +23,12 @@ import kz.juzym.graph.GraphRepository
 import kz.juzym.graph.GraphService
 import kz.juzym.graph.GraphServiceImpl
 import kz.juzym.user.ExposedUserRepository
+import kz.juzym.user.ExposedUserRoleRepository
 import kz.juzym.user.ExposedUserTokenRepository
 import kz.juzym.user.MailSenderStub
 import kz.juzym.user.RegistrationConfig
 import kz.juzym.user.UserRepository
+import kz.juzym.user.UserRoleRepository
 import kz.juzym.user.UserService
 import kz.juzym.user.UserServiceConfig
 import kz.juzym.user.UserServiceImpl
@@ -81,6 +83,7 @@ val infrastructureModule = module {
 val repositoryModule = module {
     single { GraphRepository(get()) }
     single<UserRepository> { ExposedUserRepository(get<PostgresDatabaseContext>().database, get()) }
+    single<UserRoleRepository> { ExposedUserRoleRepository(get<PostgresDatabaseContext>().database) }
     single<UserTokenRepository> { ExposedUserTokenRepository(get<PostgresDatabaseContext>().database) }
     single { UserSessionRepository(get<PostgresDatabaseContext>().database) }
 }
@@ -134,6 +137,7 @@ val serviceModule = module {
         UserServiceImpl(
             database = get<PostgresDatabaseContext>().database,
             userRepository = get(),
+            userRoleRepository = get(),
             tokenRepository = get(),
             mailSender = get(),
             passwordHasher = get(),
@@ -157,7 +161,8 @@ val serviceModule = module {
             jwtService = get(),
             sessionRepository = get(),
             authConfig = get(),
-            avatarService = get()
+            avatarService = get(),
+            userRoleRepository = get()
         )
     }
     single<AuthService> {

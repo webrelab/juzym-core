@@ -89,86 +89,88 @@ fun Route.authRoutes(context: ApplicationContext) {
             }
         }
 
-        post("/logout") {
-            handleAuth {
-                val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME] ?: throw UnauthorizedException()
-                withPrincipal(jwtService) {
-                    authService.logout(refreshToken)
-                }
-                clearRefreshCookie(call, secureCookies)
-                call.respond(HttpStatusCode.NoContent)
-            }
-        }
-
-        post("/logout-all") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    authService.logoutAll(principal.userId)
-                }
-                clearRefreshCookie(call, secureCookies)
-                call.respond(HttpStatusCode.NoContent)
-            }
-        }
-
-        get("/me") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    val response = authService.getCurrentUser(principal.userId)
-                    call.respond(HttpStatusCode.OK, response)
-                }
-            }
-        }
-
-        get("/sessions") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME]
-                    val response: SessionsResponse = authService.getSessions(principal.userId, refreshToken)
-                    call.respond(HttpStatusCode.OK, response)
-                }
-            }
-        }
-
-        delete("/sessions/{sessionId}") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    val sessionIdParam = call.parameters["sessionId"] ?: throw InvalidPayloadException("sessionId обязателен")
-                    val sessionId = runCatching { UUID.fromString(sessionIdParam) }
-                        .getOrElse { throw InvalidPayloadException("Недопустимый формат sessionId") }
-                    authService.revokeSession(principal.userId, sessionId)
+        authorize(jwtService) {
+            post("/logout") {
+                handleAuth {
+                    val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME] ?: throw UnauthorizedException()
+                    withPrincipal(jwtService) {
+                        authService.logout(refreshToken)
+                    }
+                    clearRefreshCookie(call, secureCookies)
                     call.respond(HttpStatusCode.NoContent)
                 }
             }
-        }
 
-        post("/password/change") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    val payload = call.receive<PasswordChangeRequest>()
-                    authService.changePassword(principal.userId, payload.currentPassword, payload.newPassword)
+            post("/logout-all") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        authService.logoutAll(principal.userId)
+                    }
+                    clearRefreshCookie(call, secureCookies)
                     call.respond(HttpStatusCode.NoContent)
                 }
             }
-        }
 
-        post("/email/change/request") {
-            handleAuth {
-                withPrincipal(jwtService) { principal ->
-                    val payload = call.receive<EmailChangeRequest>()
-                    val result = userService.requestEmailChange(principal.userId, payload.newEmail)
-                    when (result) {
-                        is EmailChangeRequestResult.Sent -> {
-                            val debugLink = if (context.config.environment == Environment.TEST) result.link else null
-                            call.respond(HttpStatusCode.OK, EmailChangeRequestResponse(sent = true, debugLink = debugLink))
-                        }
-                        EmailChangeRequestResult.NotFound -> {
-                            call.respondAuthError(
-                                AuthException(
-                                    errorCode = "user_not_found",
-                                    status = HttpStatusCode.NotFound,
-                                    message = "Пользователь не найден"
+            get("/me") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        val response = authService.getCurrentUser(principal.userId)
+                        call.respond(HttpStatusCode.OK, response)
+                    }
+                }
+            }
+
+            get("/sessions") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        val refreshToken = call.request.cookies[REFRESH_COOKIE_NAME]
+                        val response: SessionsResponse = authService.getSessions(principal.userId, refreshToken)
+                        call.respond(HttpStatusCode.OK, response)
+                    }
+                }
+            }
+
+            delete("/sessions/{sessionId}") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        val sessionIdParam = call.parameters["sessionId"] ?: throw InvalidPayloadException("sessionId обязателен")
+                        val sessionId = runCatching { UUID.fromString(sessionIdParam) }
+                            .getOrElse { throw InvalidPayloadException("Недопустимый формат sessionId") }
+                        authService.revokeSession(principal.userId, sessionId)
+                        call.respond(HttpStatusCode.NoContent)
+                    }
+                }
+            }
+
+            post("/password/change") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        val payload = call.receive<PasswordChangeRequest>()
+                        authService.changePassword(principal.userId, payload.currentPassword, payload.newPassword)
+                        call.respond(HttpStatusCode.NoContent)
+                    }
+                }
+            }
+
+            post("/email/change/request") {
+                handleAuth {
+                    withPrincipal(jwtService) { principal ->
+                        val payload = call.receive<EmailChangeRequest>()
+                        val result = userService.requestEmailChange(principal.userId, payload.newEmail)
+                        when (result) {
+                            is EmailChangeRequestResult.Sent -> {
+                                val debugLink = if (context.config.environment == Environment.TEST) result.link else null
+                                call.respond(HttpStatusCode.OK, EmailChangeRequestResponse(sent = true, debugLink = debugLink))
+                            }
+                            EmailChangeRequestResult.NotFound -> {
+                                call.respondAuthError(
+                                    AuthException(
+                                        errorCode = "user_not_found",
+                                        status = HttpStatusCode.NotFound,
+                                        message = "Пользователь не найден"
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }
@@ -210,7 +212,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuth(
     }
 }
 
-private suspend fun ApplicationCall.respondAuthError(exception: AuthException) {
+internal suspend fun ApplicationCall.respondAuthError(exception: AuthException) {
     val response = AuthErrorResponse(
         error = AuthErrorBody(
             code = exception.errorCode,
@@ -231,6 +233,12 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.withPrincipal(
     jwtService: JwtService,
     block: suspend (JwtPrincipal) -> Unit
 ) {
+    val attributePrincipal = call.jwtPrincipal()
+    if (attributePrincipal != null) {
+        block(attributePrincipal)
+        return
+    }
+
     val principal = call.requirePrincipal(jwtService)
     SecurityContext.setCurrentUserId(principal.userId)
     try {
@@ -240,7 +248,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.withPrincipal(
     }
 }
 
-private fun ApplicationCall.requirePrincipal(jwtService: JwtService): JwtPrincipal {
+internal fun ApplicationCall.requirePrincipal(jwtService: JwtService): JwtPrincipal {
     val header = request.headers["Authorization"] ?: throw UnauthorizedException()
     val token = header.removePrefix("Bearer ").trim()
     if (token.isEmpty()) {
