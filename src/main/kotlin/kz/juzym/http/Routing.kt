@@ -12,12 +12,11 @@ import kz.juzym.http.routes.publicApiRoutes
 
 fun Application.registerRoutes(context: ApplicationContext) {
     routing {
-        get("/health") {
-            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
-        }
-
         route("/api") {
             publicApiRoutes(context)
+        }
+        get("/health") {
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
     }
 }
