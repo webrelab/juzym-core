@@ -1,7 +1,5 @@
 package kz.juzym.api
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import io.restassured.RestAssured
 import io.restassured.http.ContentType
 import java.time.Instant
@@ -15,11 +13,6 @@ import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.UUID
-import kotlin.random.Random
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AuthApiTest {
