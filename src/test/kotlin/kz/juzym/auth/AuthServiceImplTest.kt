@@ -325,6 +325,16 @@ class AuthServiceImplTest {
     }
 
     @Test
+    fun `getCurrentUser throws when user pending`() {
+        val pendingUser = activeUser().copy(status = UserStatus.PENDING)
+        every { userRepository.findById(pendingUser.id) } returns pendingUser
+
+        assertFailsWith<UserNotActivatedException> {
+            service.getCurrentUser(pendingUser.id)
+        }
+    }
+
+    @Test
     fun `getCurrentUser throws when user missing`() {
         every { userRepository.findById(any()) } returns null
 

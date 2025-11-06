@@ -147,6 +147,11 @@ class AuthServiceImpl(
 
     override fun getCurrentUser(userId: UUID): MeResponse {
         val user = userRepository.findById(userId) ?: throw UnauthorizedException()
+        when (user.status) {
+            UserStatus.PENDING -> throw UserNotActivatedException()
+            UserStatus.BLOCKED -> throw AccountBlockedException()
+            UserStatus.ACTIVE -> Unit
+        }
         val avatarProfile = avatarService.getAvatarByUserId(userId)
         val avatarSummary = avatarProfile?.let {
             AvatarSummary(
