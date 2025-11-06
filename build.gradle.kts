@@ -45,6 +45,7 @@ dependencies {
     testImplementation(libs.mockk)
 
     apiTestImplementation(libs.rest.assured)
+    apiTestImplementation(libs.jwt)
 }
 
 kotlin {

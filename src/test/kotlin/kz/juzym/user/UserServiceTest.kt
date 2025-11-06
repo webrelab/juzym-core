@@ -26,6 +26,7 @@ class UserServiceTest {
     private lateinit var postgres: EmbeddedPostgres
     private lateinit var context: PostgresDatabaseContext
     private lateinit var userRepository: UserRepository
+    private lateinit var userRoleRepository: UserRoleRepository
     private lateinit var tokenRepository: UserTokenRepository
     private lateinit var passwordHasher: PasswordHasher
     private lateinit var mailSender: RecordingMailSender
@@ -44,11 +45,13 @@ class UserServiceTest {
         factory.ensureSchema(context)
         passwordHasher = BcryptPasswordHasher(logRounds = 4)
         userRepository = ExposedUserRepository(context.database, passwordHasher)
+        userRoleRepository = ExposedUserRoleRepository(context.database)
         tokenRepository = ExposedUserTokenRepository(context.database)
         mailSender = RecordingMailSender()
         service = UserServiceImpl(
             database = context.database,
             userRepository = userRepository,
+            userRoleRepository = userRoleRepository,
             tokenRepository = tokenRepository,
             mailSender = mailSender,
             passwordHasher = passwordHasher,
@@ -69,6 +72,7 @@ class UserServiceTest {
         transaction(context.database) {
             UserTokensTable.deleteAll()
             UserRegistrationIdempotencyTable.deleteAll()
+            UserRolesTable.deleteAll()
             UsersTable.deleteAll()
         }
     }

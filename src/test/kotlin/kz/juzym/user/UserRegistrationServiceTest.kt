@@ -30,6 +30,7 @@ class UserRegistrationServiceTest {
     private lateinit var postgres: EmbeddedPostgres
     private lateinit var context: PostgresDatabaseContext
     private lateinit var userRepository: UserRepository
+    private lateinit var userRoleRepository: UserRoleRepository
     private lateinit var tokenRepository: UserTokenRepository
     private lateinit var passwordHasher: PasswordHasher
     private lateinit var mailSender: TestMailSender
@@ -49,6 +50,7 @@ class UserRegistrationServiceTest {
         factory.ensureSchema(context)
         passwordHasher = BcryptPasswordHasher(logRounds = 4)
         userRepository = ExposedUserRepository(context.database, passwordHasher)
+        userRoleRepository = ExposedUserRoleRepository(context.database)
         tokenRepository = ExposedUserTokenRepository(context.database)
         mailSender = TestMailSender()
     }
@@ -59,6 +61,7 @@ class UserRegistrationServiceTest {
         transaction(context.database) {
             UserRegistrationIdempotencyTable.deleteAll()
             UserTokensTable.deleteAll()
+            UserRolesTable.deleteAll()
             UsersTable.deleteAll()
         }
     }
@@ -125,6 +128,7 @@ class UserRegistrationServiceTest {
         assertEquals(RegistrationStatus.ACTIVE, verification.status)
         assertNotNull(verification.session.accessToken)
         assertNotNull(userRepository.findByEmail(request.email))
+        assertTrue(userRoleRepository.findRoles(registration.userId).contains(Role.USER))
 
         assertThrows<RegistrationInvalidTokenException> {
             service.verifyEmail(token)
@@ -200,6 +204,7 @@ class UserRegistrationServiceTest {
         val service = UserServiceImpl(
             database = context.database,
             userRepository = userRepository,
+            userRoleRepository = userRoleRepository,
             tokenRepository = tokenRepository,
             mailSender = mailSender,
             passwordHasher = passwordHasher,
